@@ -198,7 +198,7 @@
         async function loadData() {
             try {
                 // Point to your local server
-                const res = await fetch('http://localhost:3000/staff');
+                const res = await fetch('https://attendance-break-di.onrender.com/staff');
                 allStaff = await res.json();
                 document.getElementById('loader-initial').innerHTML = '<span class="text-green-500 font-bold flex items-center gap-2"><i data-lucide="check-circle" class="w-3 h-3"></i> Ready</span>';
                 lucide.createIcons();
@@ -210,7 +210,7 @@
 
         async function fetchActiveBreaks() {
             try {
-                const res = await fetch('http://localhost:3000/active-breaks');
+                const res = await fetch('https://attendance-break-di.onrender.com/active-breaks');
                 activeBreaks = await res.json();
                 renderActiveBreaks(activeBreaks);
             } catch (err) { console.error(err); }
@@ -450,7 +450,7 @@
             });
 
             try {
-                const res = await fetch('http://localhost:3000/break', {
+                const res = await fetch('https://attendance-break-di.onrender.com/break', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -506,7 +506,7 @@
         async function submitTimeIn(id) {
             Swal.showLoading();
             try {
-                const res = await fetch('http://localhost:3000/timein', {
+                const res = await fetch('https://attendance-break-di.onrender.com/timein', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id: id })
