@@ -7,6 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
 
     <script>
         tailwind.config = {
@@ -37,45 +40,16 @@
     </script>
     <style>
         body { background-color: #000; color: #e5e5e5; -webkit-tap-highlight-color: transparent; }
-        
-        .bg-glow {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; pointer-events: none;
-            background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15), transparent 40%);
-        }
-
-        .glass-nav {
-            background: rgba(10, 10, 10, 0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255,255,255,0.08);
-            z-index: 40;
-        }
-
-        .glass-card {
-            background: rgba(20, 20, 20, 0.6);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        }
-
-        /* BLOCKING OVERLAY */
-        #loading-overlay {
-            background: rgba(0, 0, 0, 0.75);
-            backdrop-filter: blur(12px);
-            z-index: 9999;
-        }
-
-        .timeline-line::before {
-            content: ''; position: absolute; top: 12px; bottom: -12px; left: 5px; width: 2px; background: #27272a; z-index: 0;
-        }
+        .bg-glow { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; pointer-events: none; background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15), transparent 40%); }
+        .glass-nav { background: rgba(10, 10, 10, 0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.08); z-index: 40; }
+        .glass-card { background: rgba(20, 20, 20, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        #loading-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px); z-index: 9999; }
+        .timeline-line::before { content: ''; position: absolute; top: 12px; bottom: -12px; left: 5px; width: 2px; background: #27272a; z-index: 0; }
         .timeline-item:last-child .timeline-line::before { display: none; }
-
-        .tab-btn.active {
-            background-color: #6366f1;
-            color: white;
-            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
-            border-color: rgba(99, 102, 241, 0.5);
-        }
+        .tab-btn.active { background-color: #6366f1; color: white; box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); border-color: rgba(99, 102, 241, 0.5); }
+        
+        /* Select Styling */
+        select option { background-color: #121212; color: white; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col pb-12">
@@ -88,8 +62,46 @@
             <div class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
             <div class="absolute inset-4 bg-indigo-500/20 rounded-full animate-pulse"></div>
         </div>
-        <h3 class="text-white font-bold text-lg tracking-widest">LOADING DATA</h3>
+        <h3 class="text-white font-bold text-lg tracking-widest" id="loader-text">LOADING DATA</h3>
         <p class="text-slate-400 text-sm mt-1">Please wait...</p>
+    </div>
+
+    <div id="print-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl transform scale-100 transition-all ring-1 ring-white/10">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-bold text-white flex items-center gap-2">
+                    <i data-lucide="printer" class="text-indigo-500 w-5 h-5"></i> Export Report
+                </h3>
+                <button onclick="closePrintModal()" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Report Type</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="setPrintMode('daily')" id="pm-daily" class="print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold border border-transparent shadow-lg shadow-indigo-500/20">Daily</button>
+                        <button onclick="setPrintMode('monthly')" id="pm-monthly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10">Monthly</button>
+                        <button onclick="setPrintMode('yearly')" id="pm-yearly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10">Yearly</button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Select Range</label>
+                    <div class="relative">
+                        <i data-lucide="calendar-days" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"></i>
+                        <select id="print-range-select" class="w-full bg-white/5 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 p-3 appearance-none transition-all">
+                            </select>
+                        <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500">
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <button onclick="executePrint()" class="mt-8 w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-xl shadow-indigo-900/20 transition-all flex items-center justify-center gap-2">
+                <i data-lucide="download"></i> Download PDF
+            </button>
+        </div>
     </div>
 
     <nav class="glass-nav sticky top-0 transition-all duration-300">
@@ -133,26 +145,25 @@
                 </div>
 
                 <div class="relative flex-grow">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i data-lucide="calendar" class="h-4 w-4 text-slate-500"></i>
-                    </div>
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i data-lucide="calendar" class="h-4 w-4 text-slate-500"></i></div>
                     <select id="dateFilter" onchange="fetchReport()" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-8 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none appearance-none transition-all">
                         <option>Loading...</option>
                     </select>
                 </div>
 
                 <div class="relative flex-grow-[2]">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i data-lucide="search" class="h-4 w-4 text-slate-500"></i>
-                    </div>
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i data-lucide="search" class="h-4 w-4 text-slate-500"></i></div>
                     <input type="text" id="searchInput" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-4 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none placeholder-slate-600 transition-all" placeholder="Search staff...">
                 </div>
+
+                <button onclick="openPrintModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-lg transition-colors flex items-center justify-center shadow-lg shadow-indigo-500/20 active:scale-95">
+                    <i data-lucide="printer" class="w-5 h-5"></i>
+                </button>
             </div>
         </div>
     </nav>
 
     <main class="max-w-7xl mx-auto w-full px-4 md:px-6 mt-8">
-        
         <div class="flex items-end justify-between mb-6">
             <h2 class="text-xl font-bold text-white" id="view-title">Activity Feed</h2>
         </div>
@@ -178,13 +189,10 @@
         </div>
 
         <div id="empty-state" class="hidden flex-col items-center justify-center py-32 text-center">
-            <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
-                <i data-lucide="coffee" class="w-8 h-8 text-slate-600"></i>
-            </div>
+            <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4"><i data-lucide="coffee" class="w-8 h-8 text-slate-600"></i></div>
             <h3 class="text-white font-bold">No Data Found</h3>
             <p class="text-slate-500 text-sm mt-1">Try selecting a different date or filter.</p>
         </div>
-
     </main>
 
     <script>
@@ -195,13 +203,15 @@
         let fetchedData = []; 
         let debounceTimer; 
         
+        // Print Logic Variables
+        let printMode = 'daily';
+        
         lucide.createIcons();
 
         // --- APP START ---
         async function init() {
             try {
-                showLoading(); // BLOCK UI
-                
+                showLoading();
                 const res = await fetch(`${API_URL}/available-sheets`);
                 if (!res.ok) throw new Error('API Error');
                 availableSheets = await res.json();
@@ -213,7 +223,6 @@
                 
                 populateFilter('daily', `${day}-${month}-${year}`);
                 fetchReport();
-                
             } catch (error) {
                 console.error(error);
                 document.getElementById('view-title').innerText = "Connection Failed";
@@ -222,20 +231,166 @@
             }
         }
 
-        // --- LOADING OVERLAY LOGIC ---
-        function showLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            overlay.classList.remove('hidden');
-            // Force redraw/opacity for transition if needed, 
-            // but simple display toggle is safer for blocking
+        // --- LOADING UI ---
+        function showLoading(text = "LOADING DATA") {
+            document.getElementById('loader-text').innerText = text;
+            document.getElementById('loading-overlay').classList.remove('hidden');
         }
 
         function hideLoading() {
-            const overlay = document.getElementById('loading-overlay');
-            overlay.classList.add('hidden');
+            document.getElementById('loading-overlay').classList.add('hidden');
         }
 
-        // --- FILTER LOGIC ---
+        // --- PRINT MODAL LOGIC ---
+        function openPrintModal() {
+            document.getElementById('print-modal').classList.remove('hidden');
+            setPrintMode('daily'); // Reset to default
+        }
+
+        function closePrintModal() {
+            document.getElementById('print-modal').classList.add('hidden');
+        }
+
+        function setPrintMode(mode) {
+            printMode = mode;
+            
+            // Update Buttons UI
+            document.querySelectorAll('.print-mode-btn').forEach(btn => {
+                btn.className = "print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10 transition-all";
+            });
+            const activeBtn = document.getElementById(`pm-${mode}`);
+            activeBtn.className = "print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold border border-transparent shadow-lg shadow-indigo-500/20 transition-all";
+
+            // Populate Dropdown
+            const select = document.getElementById('print-range-select');
+            select.innerHTML = '';
+            let options = [];
+
+            if (mode === 'daily') options = [...availableSheets].reverse(); 
+            else if (mode === 'monthly') options = Array.from(new Set(availableSheets.map(s => s.substring(3))));
+            else if (mode === 'yearly') options = Array.from(new Set(availableSheets.map(s => s.substring(6))));
+
+            options.forEach(opt => {
+                const el = document.createElement('option');
+                el.value = opt;
+                el.innerText = opt;
+                select.appendChild(el);
+            });
+        }
+
+        async function executePrint() {
+            const range = document.getElementById('print-range-select').value;
+            if(!range) return;
+
+            closePrintModal();
+            showLoading("GENERATING PDF...");
+
+            try {
+                // Fetch data for the specific print request
+                const res = await fetch(`${API_URL}/report?mode=${printMode}&filter=${range}`);
+                const json = await res.json();
+                const dataToPrint = json.raw;
+
+                if (dataToPrint.length === 0) {
+                    alert("No data found for this selection.");
+                    hideLoading();
+                    return;
+                }
+
+                // Aggregate Data
+                const aggregation = {};
+                dataToPrint.forEach(log => {
+                    if(!aggregation[log.id]) {
+                        aggregation[log.id] = {
+                            id: log.id,
+                            name: log.name,
+                            group: log.group,
+                            breakCount: 0,
+                            otCount: 0
+                        };
+                    }
+                    aggregation[log.id].breakCount++;
+                    if(log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
+                });
+                const rows = Object.values(aggregation).sort((a,b) => b.breakCount - a.breakCount);
+
+                // Initialize PDF
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF();
+
+                // Custom Header
+                doc.setFillColor(30, 30, 30); // Dark Header Background
+                doc.rect(0, 0, 210, 25, 'F');
+                doc.setTextColor(255, 255, 255);
+                doc.setFontSize(14);
+                doc.setFont("helvetica", "bold");
+                doc.text("ATTENDANCE BREAK REPORT", 14, 16);
+                
+                doc.setFontSize(9);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(200, 200, 200);
+                doc.text(`Period: ${range}`, 14, 32);
+                doc.text(`Generated: ${new Date().toLocaleString()}`, 140, 16);
+
+                const tableBody = rows.map(row => [
+                    row.id,
+                    row.name,
+                    row.group,
+                    row.breakCount,
+                    row.otCount
+                ]);
+
+                // Elegant Table Style
+                doc.autoTable({
+                    head: [['ID', 'NAME', 'DEPARTMENT', 'TOTAL BREAKS', 'OVERTIME INCIDENTS']],
+                    body: tableBody,
+                    startY: 35,
+                    theme: 'grid', // Clean grid
+                    styles: { 
+                        fontSize: 9, 
+                        cellPadding: 4, 
+                        valign: 'middle', 
+                        font: 'helvetica',
+                        textColor: [50, 50, 50]
+                    },
+                    headStyles: { 
+                        fillColor: [79, 70, 229], // Indigo 600
+                        textColor: [255, 255, 255],
+                        fontStyle: 'bold',
+                        lineWidth: 0
+                    },
+                    alternateRowStyles: { 
+                        fillColor: [248, 250, 252] // Very light gray for zebra stripe
+                    },
+                    columnStyles: {
+                        0: { cellWidth: 20, fontStyle: 'bold' },
+                        3: { halign: 'center' },
+                        4: { halign: 'center', textColor: [220, 38, 38], fontStyle: 'bold' }
+                    },
+                    // Add summary footer
+                    didDrawPage: function(data) {
+                        // Footer logic if needed
+                    }
+                });
+
+                // Add Summary at bottom of last page
+                const finalY = doc.lastAutoTable.finalY + 10;
+                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                doc.text(`Total Staff Active: ${rows.length}`, 14, finalY);
+                doc.text(`Total Records: ${dataToPrint.length}`, 14, finalY + 6);
+
+                doc.save(`Attendance_${range}.pdf`);
+
+            } catch (e) {
+                console.error(e);
+                alert("Error generating PDF");
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // --- DASHBOARD LOGIC ---
         function populateFilter(mode, defaultVal = '') {
             const select = document.getElementById('dateFilter');
             select.innerHTML = '';
@@ -263,12 +418,9 @@
 
         function changeMode(mode) {
             currentMode = mode;
-            
-            // UI Toggle
             document.querySelectorAll('.tab-btn').forEach(btn => btn.className = "tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200");
             document.getElementById(`btn-${mode}`).className = "tab-btn active flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold transition-all duration-200";
 
-            // Context logic
             const currentVal = document.getElementById('dateFilter').value;
             let nextVal = '';
             if(currentVal && currentVal !== "No Data") {
@@ -280,11 +432,9 @@
             fetchReport();
         }
 
-        // --- CORE DATA FETCHING ---
         async function fetchReport() {
             const filterVal = document.getElementById('dateFilter').value;
-            
-            showLoading(); // SHOW BLOCKING OVERLAY
+            showLoading();
 
             if(!filterVal || filterVal === "No Data") {
                  updateStats([]);
@@ -309,7 +459,7 @@
                 console.error(e);
                 alert("Failed to load data");
             } finally {
-                hideLoading(); // HIDE BLOCKING OVERLAY
+                hideLoading();
             }
         }
 
@@ -335,7 +485,6 @@
             const viewTable = document.getElementById('view-table');
             const emptyState = document.getElementById('empty-state');
 
-            // Logic to determine view
             viewGrid.classList.add('hidden');
             viewTable.classList.add('hidden');
             emptyState.classList.add('hidden');
