@@ -11,21 +11,8 @@ app.use(cors());
 app.use(express.json());
 
 // ==========================
-// 1. HEALTH CHECK ROUTE (REQUIRED FOR RENDER)
+// CONFIG
 // ==========================
-app.get('/', (req, res) => {
-    res.status(200).send('✅ Staff Break System API is Online!');
-});
-
-// ==========================
-// CONFIG & CREDENTIALS CHECK
-// ==========================
-if (!process.env.GOOGLE_CREDENTIALS) {
-    console.error("❌ FATAL ERROR: 'GOOGLE_CREDENTIALS' environment variable is missing.");
-    console.error("👉 Please add your service account JSON in the Render Dashboard under 'Environment'.");
-    process.exit(1); // Stop the server so Render knows it failed immediately
-}
-
 const READ_SPREADSHEET_ID = '1h6pqlcoUSKPWsk7it4jFLtg5Oc_w7gXGnKCXSIduK7E';
 const READ_SHEET_NAME = 'DB_DUC_BKU';
 
@@ -34,7 +21,7 @@ const DI_SHEET_NAME = 'Sheet3';
 const TEMPLATE_SHEET_NAME = 'Sheet1';
 
 // ==========================
-// GOOGLE AUTH
+// AUTH
 // ==========================
 const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
@@ -42,7 +29,7 @@ const auth = new google.auth.GoogleAuth({
 });
 
 // ==========================
-// TIMEZONE HELPERS (CAMBODIA GMT+7)
+// HELPERS
 // ==========================
 function getCambodiaDate() {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" }));
@@ -72,9 +59,6 @@ function parseTimeStr(timeStr) {
     return d;
 }
 
-// ==========================
-// SHEET HELPERS
-// ==========================
 async function ensureTodaySheet(sheets) {
     const today = getTodaySheetName();
     try {
@@ -103,7 +87,6 @@ async function ensureTodaySheet(sheets) {
         }
         return today;
     } catch (err) {
-        console.error("Sheet Error:", err);
         return today;
     }
 }
@@ -129,31 +112,21 @@ function getDirectImageLink(url) {
 }
 
 // ==========================
-// API ROUTES
+// ROUTES
 // ==========================
 
-// 1. GET STAFF (SCAN ONLY)
+app.get('/', (req, res) => res.send('API Online'));
+
+// 1. GET STAFF (MERGED)
 app.get('/staff', async (req, res) => {
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
 
         const [mainRes, imgRes, diRes] = await Promise.all([
-            sheets.spreadsheets.values.get({
-                spreadsheetId: READ_SPREADSHEET_ID,
-                range: `'${READ_SHEET_NAME}'!A13:AI`,
-                valueRenderOption: 'FORMATTED_VALUE'
-            }),
-            sheets.spreadsheets.values.get({
-                spreadsheetId: READ_SPREADSHEET_ID,
-                range: `'${READ_SHEET_NAME}'!AJ13:AJ`,
-                valueRenderOption: 'FORMULA'
-            }),
-            sheets.spreadsheets.values.get({
-                spreadsheetId: WRITE_SPREADSHEET_ID,
-                range: `'${DI_SHEET_NAME}'!A9:M`,
-                valueRenderOption: 'FORMATTED_VALUE'
-            })
+            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI`, valueRenderOption: 'FORMATTED_VALUE' }),
+            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' }),
+            sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M`, valueRenderOption: 'FORMATTED_VALUE' })
         ]);
 
         const mainRows = mainRes.data.values || [];
@@ -162,37 +135,30 @@ app.get('/staff', async (req, res) => {
 
         const scanMap = {};
         diRows.forEach(r => {
-            const status = r[5];   // Col F
-            const nameEN = r[12];  // Col M
+            const status = r[5];
+            const nameEN = r[12];
             if (status && status.includes('Scan') && nameEN) {
-                scanMap[nameEN.trim().toUpperCase()] = {
-                    id: r[4],    // Col E
-                    group: r[6]  // Col G
-                };
+                scanMap[nameEN.trim().toUpperCase()] = { id: r[4], group: r[6] };
             }
         });
 
         const staff = mainRows.map((r, i) => {
             const nameEN = r[4];
             if (!nameEN) return null;
-
             const scan = scanMap[nameEN.trim().toUpperCase()];
-            if (!scan) return null; 
+            if (!scan) return null;
 
             return {
                 id: scan.id || r[1],
-                name_kh: r[3] || '',
                 name_en: nameEN,
                 group: scan.group || r[26] || 'Staff',
                 image: getDirectImageLink(imgRows[i]?.[0]),
-                attendance: 'វត្តមាន Scan'
+                training_place: r[24] || ''
             };
         }).filter(Boolean);
 
         res.json(staff);
-
     } catch (err) {
-        console.error("Staff Error:", err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -220,7 +186,7 @@ app.get('/active-breaks', async (req, res) => {
                 timeIn: r[4],
                 area: r[5]
             }))
-            .filter(r => !r.timeIn); 
+            .filter(r => !r.timeIn);
 
         res.json(active);
     } catch (e) {
@@ -228,21 +194,18 @@ app.get('/active-breaks', async (req, res) => {
     }
 });
 
-// 3. START BREAK
+// 3. BREAK & TIMEIN
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         const sheet = await ensureTodaySheet(sheets);
-
         const now = getCambodiaDate();
         const dateStr = getTodaySheetName();
         const timeStr = getCurrentTimeString();
 
-        const values = [[
-            id, name, group, timeStr, '', area, dateStr, ''
-        ]];
+        const values = [[id, name, group, timeStr, '', area, dateStr, '']];
 
         await sheets.spreadsheets.values.append({
             spreadsheetId: WRITE_SPREADSHEET_ID,
@@ -250,32 +213,20 @@ app.post('/break', async (req, res) => {
             valueInputOption: 'USER_ENTERED',
             resource: { values }
         });
-
         res.json({ status: 'success', timeOut: timeStr });
-    } catch (err) {
-        console.error("Break Error:", err);
-        res.status(500).json({ status: 'error' });
-    }
+    } catch { res.status(500).json({ status: 'error' }); }
 });
 
-// 4. TIME IN
 app.post('/timein', async (req, res) => {
     const { id } = req.body;
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         const sheet = await ensureTodaySheet(sheets);
-
-        const r = await sheets.spreadsheets.values.get({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            range: `'${sheet}'!A:H`
-        });
-
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H` });
         const rows = r.data.values;
-        let rowIndex = -1;
-        let outTime = '';
+        let rowIndex = -1, outTime = '';
 
-        // Loop backwards to find latest active break
         for (let i = rows.length - 1; i >= 1; i--) {
             if (rows[i][0] == id && !rows[i][4]) {
                 rowIndex = i + 1;
@@ -287,11 +238,8 @@ app.post('/timein', async (req, res) => {
         if (rowIndex === -1) return res.status(404).json({ status: 'error' });
 
         const now = getCambodiaDate();
-        const startTime = parseTimeStr(outTime);
-        const diffMs = now - startTime;
-        const diffMins = Math.floor(diffMs / 60000);
-        
-        const overtime = diffMins > 15 ? `${diffMins - 15} mins` : '0';
+        const diff = Math.floor((now - parseTimeStr(outTime)) / 60000);
+        const overtime = diff > 15 ? `${diff - 15} mins` : '0';
         const timeInStr = getCurrentTimeString();
 
         await sheets.spreadsheets.values.batchUpdate({
@@ -304,18 +252,8 @@ app.post('/timein', async (req, res) => {
                 ]
             }
         });
-
         res.json({ status: 'success', timeIn: timeInStr });
-    } catch (err) {
-        console.error("TimeIn Error:", err);
-        res.status(500).json({ status: 'error' });
-    }
+    } catch (err) { res.status(500).json({ status: 'error' }); }
 });
 
-// ==========================
-// START SERVER (BIND TO 0.0.0.0 FOR RENDER)
-// ==========================
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`🌍 Health check available at /`);
-});
+app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port http://localhost:${PORT}`));
