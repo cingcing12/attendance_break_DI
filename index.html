@@ -224,14 +224,15 @@
         // --- DATA LOADING ---
         async function loadData() {
             try {
+                // Initial Load (With Animation)
                 await fetchData(true);
                 document.getElementById('loader-initial').innerHTML = '<span class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="wifi" class="w-3 h-3"></i> Online</span>';
                 lucide.createIcons();
                 
-                // 1. Fetch Server Data (Every 2 seconds)
+                // Real-Time Polling (Background - No Animation)
                 pollingTimer = setInterval(() => fetchData(false), 2000); 
 
-                // 2. Local Minute Update (Every 5 seconds - updates numbers purely visually)
+                // Local Minute Update (Every 5 seconds - updates numbers purely visually)
                 minuteTimer = setInterval(() => updateTimeDisplays(), 5000);
 
             } catch (err) {
@@ -239,6 +240,7 @@
             }
         }
 
+        // Fetch Data: isBackground = true means NO animation
         async function fetchData(isInitial = false) {
             try {
                 const [resStaff, resBreaks] = await Promise.all([
@@ -249,14 +251,16 @@
                 const newStaff = await resStaff.json();
                 const newBreaks = await resBreaks.json();
 
-                // Simple diff to prevent unnecessary re-rendering logic if data is same
-                // Note: We update anyway if it's the active tab to handle removed items properly
-                allStaff = newStaff;
-                activeBreaks = newBreaks;
-                updateUI(!isInitial);
+                // Simple check to prevent unnecessary DOM manipulation if nothing changed
+                if(JSON.stringify(newBreaks) !== JSON.stringify(activeBreaks) || isInitial) {
+                    allStaff = newStaff;
+                    activeBreaks = newBreaks;
+                    updateUI(!isInitial); // Pass true to Disable Animation if it's a background update
+                }
             } catch (e) { console.error("Poll Error", e); }
         }
 
+        // --- UI UPDATER ---
         function updateUI(disableAnimation = false) {
             if (currentTab === 'active') {
                 renderActiveBreaks(activeBreaks, disableAnimation);
@@ -275,7 +279,7 @@
             const grid = document.getElementById('activeGrid');
             const emptyMsg = document.getElementById('no-active');
             
-            // Show all breaks
+            // [FIXED] Show all active breaks, do NOT filter by area
             const filteredList = list; 
             document.getElementById('itemCount').innerText = filteredList.length;
 
@@ -312,6 +316,8 @@
                 const statusHtml = isOvertime
                     ? `<span class="absolute top-2 right-2 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">+${overtimeAmount}m</span>`
                     : `<span class="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">OK</span>`;
+                
+                // Show area badge if it differs from current view area
                 const areaBadge = (item.area !== currentArea) 
                     ? `<span class="absolute top-2 left-2 bg-slate-700 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded border border-white/10">ZONE ${item.area || '?'}</span>` 
                     : '';
