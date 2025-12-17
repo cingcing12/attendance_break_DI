@@ -16,7 +16,7 @@
                     fontFamily: { sans: ['"Inter"', 'sans-serif'] },
                     animation: { 
                         'blob': 'blob 7s infinite',
-                        'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+                        'fade-in-up': 'fadeInUp 0.4s ease-out forwards',
                         'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
                     },
                     keyframes: {
@@ -27,11 +27,11 @@
                             '100%': { transform: 'translate(0px, 0px) scale(1)' },
                         },
                         fadeInUp: {
-                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '0%': { opacity: '0', transform: 'translateY(15px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
                         },
                         pulseGlow: {
-                            '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0px rgba(244, 63, 94, 0.7)' },
+                            '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0px rgba(244, 63, 94, 0.6)' },
                             '50%': { opacity: '.9', boxShadow: '0 0 0 10px rgba(244, 63, 94, 0)' },
                         }
                     }
@@ -43,7 +43,6 @@
         body {
             background-color: #0f172a;
             color: #f8fafc;
-            /* Modern Mesh Gradient */
             background-image: 
                 radial-gradient(at 40% 20%, hsla(266,51%,46%,0.2) 0px, transparent 50%),
                 radial-gradient(at 80% 0%, hsla(189,100%,56%,0.2) 0px, transparent 50%),
@@ -54,29 +53,23 @@
 
         .glass-card {
             background: rgba(255, 255, 255, 0.07);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
         }
 
         .glass-header {
-            background: rgba(15, 23, 42, 0.8);
+            background: rgba(15, 23, 42, 0.85);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
             border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        /* Custom Scrollbar */
+        /* Hide Scrollbar */
         ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
-        
-        .disabled-card {
-            opacity: 0.6;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            pointer-events: none; /* Block clicks */
-        }
         
         .active-tab { background: white; color: #0f172a; box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2); }
         .inactive-tab { background: transparent; color: #94a3b8; }
@@ -89,8 +82,6 @@
             border-radius: 20px;
             color: white;
         }
-        div:where(.swal2-container) h2:where(.swal2-title) { color: white !important; }
-        div:where(.swal2-container) div:where(.swal2-html-container) { color: #cbd5e1 !important; }
     </style>
 </head>
 <body class="flex flex-col antialiased">
@@ -103,11 +94,9 @@
 
     <div id="view-selection" class="relative z-50 min-h-screen flex flex-col items-center justify-center p-6">
         <div class="glass-card p-10 rounded-[32px] shadow-2xl max-w-md w-full text-center animate-fade-in-up border-t border-white/20">
-            
             <div class="w-16 h-16 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-blue-500/30">
                 <i data-lucide="scan-face" class="w-8 h-8 text-white"></i>
             </div>
-
             <h1 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Staff Portal</h1>
             <p class="text-slate-400 mb-8 font-medium">Select your current zone</p>
             
@@ -122,7 +111,6 @@
                         <i data-lucide="arrow-right" class="text-slate-500 group-hover:text-blue-400 transition-transform group-hover:translate-x-1"></i>
                     </div>
                 </button>
-
                 <button onclick="enterArea('B')" class="group relative overflow-hidden rounded-2xl bg-slate-800/50 p-1 hover:bg-rose-500/10 transition-all duration-300 border border-slate-700 hover:border-rose-500">
                     <div class="flex items-center p-4">
                         <div class="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-rose-500/30">B</div>
@@ -134,7 +122,6 @@
                     </div>
                 </button>
             </div>
-
             <div id="loader-initial" class="mt-8 text-xs font-bold text-slate-500 uppercase tracking-widest flex justify-center items-center gap-2">
                 <i data-lucide="loader" class="animate-spin w-3 h-3"></i> Connecting...
             </div>
@@ -154,7 +141,7 @@
                             <h1 class="font-bold text-lg text-white leading-none">Dashboard</h1>
                             <div class="flex items-center gap-2 mt-1">
                                 <span id="displayArea" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-500/30">--</span>
-                                <span class="text-[10px] font-bold text-slate-400">Count: <span id="itemCount" class="text-white">0</span></span>
+                                <span class="text-[10px] font-bold text-slate-400">Total: <span id="itemCount" class="text-white">0</span></span>
                             </div>
                         </div>
                     </div>
@@ -167,7 +154,7 @@
 
                 <div class="bg-slate-800/50 p-1 rounded-xl flex w-full border border-white/5">
                     <button onclick="switchTab('staff')" id="tab-staff" class="active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2">
-                        <i data-lucide="users" class="w-4 h-4"></i> Staff
+                        <i data-lucide="users" class="w-4 h-4"></i> Take Break
                     </button>
                     <button onclick="switchTab('active')" id="tab-active" class="inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2">
                         <i data-lucide="coffee" class="w-4 h-4"></i> On Break
@@ -180,6 +167,23 @@
             <div class="max-w-7xl mx-auto">
                 
                 <div id="container-staff" class="animate-fade-in-up">
+                    
+                    <div id="staff-placeholder" class="flex flex-col items-center justify-center py-20 text-center opacity-60">
+                        <div class="bg-white/5 p-6 rounded-full mb-4">
+                            <i data-lucide="search" class="w-12 h-12 text-slate-400"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1">Search to Find Staff</h3>
+                        <p class="text-slate-400 text-sm">Type a name or ID to start a break</p>
+                    </div>
+
+                    <div id="staff-not-found" class="hidden flex flex-col items-center justify-center py-20 text-center opacity-60">
+                        <div class="bg-rose-500/10 p-6 rounded-full mb-4">
+                            <i data-lucide="user-x" class="w-12 h-12 text-rose-400"></i>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-1">No Staff Found</h3>
+                        <p class="text-slate-400 text-sm">Try a different name or ID</p>
+                    </div>
+
                     <div id="staffGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"></div>
                 </div>
 
@@ -205,20 +209,42 @@
         let currentTab = 'staff';
         let timerInterval = null;
 
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'bottom-end', // MOVED TO BOTTOM RIGHT
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer)
+                toast.addEventListener('mouseleave', Swal.resumeTimer)
+            }
+        });
+
+        // Stylish Modal Config
+        const Modal = Swal.mixin({
+            customClass: {
+                popup: 'rounded-[2rem] p-6',
+                title: 'text-2xl font-bold text-slate-800',
+                htmlContainer: 'text-slate-600',
+                confirmButton: 'px-6 py-3 rounded-xl font-bold text-sm shadow-lg shadow-blue-500/30',
+                cancelButton: 'px-6 py-3 rounded-xl font-bold text-sm text-slate-500 hover:bg-slate-50'
+            },
+            buttonsStyling: false,
+            width: '22rem'
+        });
+
         lucide.createIcons();
 
-        // --- FETCH BOTH LISTS AND RENDER ---
+        // --- FETCH DATA ---
         async function loadData() {
             try {
-                // Fetch Staff AND Active Breaks in parallel
                 const [resStaff, resBreaks] = await Promise.all([
                     fetch(`${API_URL}/staff`),
                     fetch(`${API_URL}/active-breaks`)
                 ]);
-
                 allStaff = await resStaff.json();
-                activeBreaks = await resBreaks.json(); // We need this immediately
-
+                activeBreaks = await resBreaks.json();
                 document.getElementById('loader-initial').innerHTML = '<span class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="wifi" class="w-3 h-3"></i> Online</span>';
                 lucide.createIcons();
             } catch (err) {
@@ -230,33 +256,47 @@
             try {
                 const res = await fetch(`${API_URL}/active-breaks`);
                 activeBreaks = await res.json();
-                // If we are on staff tab, re-render to update "Disabled" status
-                if(currentTab === 'staff') renderStaff(allStaff);
-                // If we are on active tab, update that list
                 if(currentTab === 'active') renderActiveBreaks(activeBreaks);
+                
+                // If user is searching in Staff tab, refresh the view to update "Disabled" buttons
+                const searchTerm = document.getElementById('searchBar').value;
+                if(currentTab === 'staff' && searchTerm.length > 0) {
+                    const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(searchTerm) || (p.id && p.id.toString().includes(searchTerm)));
+                    renderStaff(filtered);
+                }
             } catch (e) { console.error(e); }
         }
 
-        // --- RENDER STAFF (THE LOGIC YOU ASKED FOR) ---
+        // --- RENDER STAFF ---
         function renderStaff(list) {
             const grid = document.getElementById('staffGrid');
+            const placeholder = document.getElementById('staff-placeholder');
+            const notFound = document.getElementById('staff-not-found');
+            
             grid.innerHTML = '';
             document.getElementById('itemCount').innerText = list.length;
 
+            // Handle Empty Search Logic
+            if (list.length === 0) {
+                notFound.classList.remove('hidden');
+                placeholder.classList.add('hidden');
+                return;
+            } else {
+                notFound.classList.add('hidden');
+                placeholder.classList.add('hidden');
+            }
+
             list.forEach((person, index) => {
-                // 1. CHECK IF THIS PERSON IS ALREADY ON BREAK
                 const isOnBreak = activeBreaks.some(b => b.id == person.id && !b.timeIn);
 
-                // 2. STYLING LOGIC
                 let cardClass = "glass-card rounded-2xl p-3 flex flex-col items-center text-center relative animate-fade-in-up transition-all";
                 let btnState = "";
                 let btnText = "Break";
                 let btnIcon = "coffee";
                 let btnColor = currentArea === 'A' ? "bg-blue-600 hover:bg-blue-500" : "bg-rose-600 hover:bg-rose-500";
                 
-                // 3. DISABLE IF ON BREAK
                 if(isOnBreak) {
-                    cardClass += " opacity-50 bg-slate-900/50 border-slate-700 grayscale"; // Dim card
+                    cardClass += " opacity-50 bg-slate-900/50 border-slate-700 grayscale"; 
                     btnState = "disabled style='cursor:not-allowed; opacity:0.5;'";
                     btnText = "On Break";
                     btnIcon = "clock";
@@ -265,9 +305,7 @@
                     cardClass += " hover:bg-white/5 hover:scale-[1.02] hover:shadow-xl hover:border-white/20";
                 }
 
-                // Stagger animation
                 const delay = index < 15 ? index * 50 : 0;
-                
                 const imgUrl = person.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(person.name_en)}`;
                 const displayId = person.id || '...';
                 const displayGroup = person.group || 'Staff';
@@ -278,17 +316,13 @@
 
                 card.innerHTML = `
                     ${isOnBreak ? `<div class="absolute top-2 right-2 bg-slate-800 text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded border border-slate-600">BUSY</div>` : ''}
-                    
                     <div class="absolute top-2 left-2 px-1.5 py-0.5 bg-white/10 border border-white/5 rounded text-[9px] font-mono text-slate-400 font-bold">#${displayId}</div>
-                    
                     <div class="relative mb-2 mt-1">
                         <img src="${imgUrl}" class="w-16 h-16 rounded-full object-cover shadow-lg border-2 border-white/10 bg-slate-800">
                         ${isOnBreak ? '' : `<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-emerald-500 border-2 border-slate-900 rounded-full"></div>`}
                     </div>
-                    
                     <h3 class="font-bold text-white text-sm truncate w-full leading-tight mb-0.5">${person.name_en}</h3>
                     <p class="text-[10px] text-slate-400 font-medium mb-3 uppercase tracking-wide truncate w-full bg-white/5 rounded py-0.5 px-1">${displayGroup}</p>
-                    
                     <button ${btnState} onclick='confirmStartBreak(${JSON.stringify(person).replace(/'/g, "&#39;")})' 
                         class="w-full ${btnColor} text-white py-2 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95">
                         <i data-lucide="${btnIcon}" class="w-3.5 h-3.5"></i> ${btnText}
@@ -318,11 +352,9 @@
             filteredList.forEach((item, index) => {
                 const staffInfo = allStaff.find(s => s.id == item.id);
                 const imgUrl = staffInfo ? staffInfo.image : `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(item.name)}`;
-                
                 const minsGone = getMinutesDiff(item.timeOut);
                 const isOvertime = minsGone > 15;
                 const overtimeAmount = minsGone - 15;
-
                 const delay = index * 50; 
                 let borderClass = isOvertime ? "border border-rose-500/50 shadow-rose-900/20 shadow-lg animate-pulse-glow bg-rose-900/10" : "";
                 let statusBadge = isOvertime
@@ -338,13 +370,11 @@
                     ${statusBadge}
                     <img src="${imgUrl}" class="w-14 h-14 rounded-full object-cover mb-2 shadow-lg border-2 border-white/10 bg-slate-800">
                     <h3 class="font-bold text-white text-sm mb-0.5 leading-tight truncate w-full">${item.name}</h3>
-                    
                     <div class="bg-slate-900/50 rounded-lg p-2 mb-2 w-full border border-white/5 mt-1">
                         <p class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Elapsed</p>
                         <p class="text-xl font-black ${timeColor} leading-none my-0.5">${minsGone}<span class="text-xs font-bold text-slate-500 ml-0.5">min</span></p>
                         <p class="text-[9px] text-slate-400">Out: ${item.timeOut}</p>
                     </div>
-                    
                     <button onclick="confirmTimeIn('${item.id}', '${item.name}', ${isOvertime}, ${overtimeAmount})" 
                         class="w-full bg-slate-700 hover:bg-emerald-600 text-white py-2 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-white/5">
                         <i data-lucide="log-in" class="w-3.5 h-3.5"></i> Clock In
@@ -355,7 +385,7 @@
             lucide.createIcons();
         }
 
-        // --- HELPERS ---
+        // --- TIME CALC ---
         function getMinutesDiff(timeStr) {
             if (!timeStr) return 0;
             const parts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -373,22 +403,33 @@
             return diffMins > 0 ? diffMins : 0;
         }
 
+        // --- NAVIGATION & TABS ---
         function switchTab(tab) {
             currentTab = tab;
             const tabStaff = document.getElementById('tab-staff');
             const tabActive = document.getElementById('tab-active');
             const conStaff = document.getElementById('container-staff');
             const conActive = document.getElementById('container-active');
-            
-            document.getElementById('searchBar').value = '';
+            const placeholder = document.getElementById('staff-placeholder');
+            const notFound = document.getElementById('staff-not-found');
+            const grid = document.getElementById('staffGrid');
+            const searchBar = document.getElementById('searchBar');
+
+            searchBar.value = ''; // Clear search
 
             if (tab === 'staff') {
                 tabStaff.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
                 tabActive.className = "inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2";
                 conStaff.classList.remove('hidden');
                 conActive.classList.add('hidden');
+                
+                // RESET STATE: Show Placeholder, Hide Grid
+                grid.innerHTML = '';
+                placeholder.classList.remove('hidden');
+                notFound.classList.add('hidden');
+                document.getElementById('itemCount').innerText = "0";
+
                 clearInterval(timerInterval);
-                renderStaff(allStaff); // Re-render to ensure disabled state is fresh
             } else {
                 tabStaff.className = "inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2";
                 tabActive.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
@@ -401,7 +442,7 @@
         }
 
         function enterArea(area) {
-            if(allStaff.length === 0) return Swal.fire({ icon: 'info', title: 'Loading...', toast:true, position:'top-end', showConfirmButton:false, timer:1000 });
+            if(allStaff.length === 0) return Swal.fire({ icon: 'info', title: 'Loading...', toast:true, position:'bottom-end', showConfirmButton:false, timer:1000 });
             currentArea = area;
             document.getElementById('displayArea').innerText = `ZONE ${area}`;
             
@@ -450,13 +491,16 @@
                 const res = await fetch(`${API_URL}/break`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: person.id || person.id_di, name: person.name_en, group: person.group, area: currentArea })
+                    body: JSON.stringify({ id: person.id, name: person.name_en, group: person.group, area: currentArea })
                 });
                 if(res.ok) {
-                    await refreshBreaks(); // Update active list first
-                    renderStaff(allStaff); // Re-render staff to disable button
+                    await refreshBreaks();
+                    // Manually trigger a search re-render to update the button to "On Break"
+                    const searchTerm = document.getElementById('searchBar').value;
+                    const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(searchTerm) || (p.id && p.id.toString().includes(searchTerm)));
+                    renderStaff(filtered);
+
                     Swal.close();
-                    const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
                     Toast.fire({ icon: 'success', title: 'Break Started' });
                 }
             } catch (e) { Swal.fire('Error', 'Connection Failed', 'error'); }
@@ -490,17 +534,30 @@
                 if(res.ok) {
                     await refreshBreaks();
                     Swal.close();
-                    const Toast = Swal.mixin({ toast: true, position: 'top-end', showConfirmButton: false, timer: 3000, timerProgressBar: true });
                     Toast.fire({ icon: 'success', title: 'Clocked In' });
                 }
             } catch (e) { Swal.fire('Error', 'Connection Failed', 'error'); }
         }
 
+        // --- SEARCH LISTENER ---
         document.getElementById('searchBar').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase();
+            const placeholder = document.getElementById('staff-placeholder');
+            const grid = document.getElementById('staffGrid');
+
             if (currentTab === 'staff') {
-                const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(term) || (p.id && p.id.toString().includes(term)));
-                renderStaff(filtered);
+                if (term.length === 0) {
+                    // Reset to placeholder
+                    grid.innerHTML = '';
+                    placeholder.classList.remove('hidden');
+                    document.getElementById('staff-not-found').classList.add('hidden');
+                    document.getElementById('itemCount').innerText = "0";
+                } else {
+                    // Perform Search
+                    const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(term) || (p.id && p.id.toString().includes(term)));
+                    placeholder.classList.add('hidden');
+                    renderStaff(filtered);
+                }
             } else {
                 const filtered = activeBreaks.filter(p => p.name.toLowerCase().includes(term) || p.id.toString().includes(term));
                 renderActiveBreaks(filtered);
