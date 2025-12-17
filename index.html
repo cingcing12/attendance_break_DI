@@ -1,23 +1,27 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="km">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Staff Hub Pro</title>
+    <title>Staff Hub Pro - Ultra</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+Khmer:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script> 
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <script>
         tailwind.config = {
             theme: {
                 extend: {
-                    fontFamily: { sans: ['"Inter"', 'sans-serif'] },
-                    animation: { 
-                        'blob': 'blob 7s infinite',
-                        'fade-in-up': 'fadeInUp 0.4s ease-out forwards',
-                        'pulse-glow': 'pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    fontFamily: {
+                        sans: ['"Outfit"', 'sans-serif'],
+                        khmer: ['"Noto Sans Khmer"', 'sans-serif']
+                    },
+                    animation: {
+                        'blob': 'blob 10s infinite',
+                        'pop-in': 'popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+                        'pulse-danger': 'pulseDanger 2s infinite',
+                        'float': 'float 6s ease-in-out infinite'
                     },
                     keyframes: {
                         blob: {
@@ -26,13 +30,18 @@
                             '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
                             '100%': { transform: 'translate(0px, 0px) scale(1)' },
                         },
-                        fadeInUp: {
-                            '0%': { opacity: '0', transform: 'translateY(15px)' },
-                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        popIn: {
+                            '0%': { opacity: '0', transform: 'scale(0.9) translateY(20px)' },
+                            '100%': { opacity: '1', transform: 'scale(1) translateY(0)' },
                         },
-                        pulseGlow: {
-                            '0%, 100%': { opacity: '1', boxShadow: '0 0 0 0px rgba(244, 63, 94, 0.6)' },
-                            '50%': { opacity: '.9', boxShadow: '0 0 0 10px rgba(244, 63, 94, 0)' },
+                        pulseDanger: {
+                            '0%': { boxShadow: '0 0 0 0 rgba(244, 63, 94, 0.4)' },
+                            '70%': { boxShadow: '0 0 0 15px rgba(244, 63, 94, 0)' },
+                            '100%': { boxShadow: '0 0 0 0 rgba(244, 63, 94, 0)' }
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
                         }
                     }
                 }
@@ -41,155 +50,156 @@
     </script>
     <style>
         body {
-            background-color: #0f172a;
+            background-color: #020617;
             color: #f8fafc;
             background-image: 
-                radial-gradient(at 40% 20%, hsla(266,51%,46%,0.2) 0px, transparent 50%),
-                radial-gradient(at 80% 0%, hsla(189,100%,56%,0.2) 0px, transparent 50%),
-                radial-gradient(at 0% 50%, hsla(340,100%,76%,0.2) 0px, transparent 50%);
-            background-attachment: fixed;
+                radial-gradient(at 0% 0%, hsla(253,16%,7%,1) 0, transparent 50%), 
+                radial-gradient(at 50% 0%, hsla(225,39%,30%,1) 0, transparent 50%), 
+                radial-gradient(at 100% 0%, hsla(339,49%,30%,1) 0, transparent 50%);
             min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.4);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
         .glass-card {
-            background: rgba(255, 255, 255, 0.07);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
         }
 
-        .glass-header {
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3);
         }
 
-        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.2); border-radius: 10px; }
-        
-        .active-tab { background: white; color: #0f172a; box-shadow: 0 4px 20px rgba(255, 255, 255, 0.2); }
-        .inactive-tab { background: transparent; color: #94a3b8; }
-        
+        ::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 20px; }
+
         div:where(.swal2-container) div:where(.swal2-popup) {
-            background: rgba(30, 41, 59, 0.95) !important;
-            backdrop-filter: blur(10px);
+            background: #0f172a !important;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            color: white;
+            border-radius: 24px;
+            padding: 2rem;
         }
+        .swal2-title { color: #fff !important; font-family: 'Noto Sans Khmer', sans-serif !important; }
+        .swal2-html-container { color: #94a3b8 !important; }
     </style>
 </head>
-<body class="flex flex-col antialiased">
+<body class="flex flex-col antialiased selection:bg-cyan-500 selection:text-white">
 
-    <div class="fixed inset-0 z-0 pointer-events-none overflow-hidden">
-        <div class="absolute top-0 -left-4 w-72 h-72 bg-purple-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
-        <div class="absolute top-0 -right-4 w-72 h-72 bg-blue-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" style="animation-delay: 2s"></div>
-        <div class="absolute -bottom-8 left-20 w-72 h-72 bg-pink-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob" style="animation-delay: 4s"></div>
+    <div class="fixed inset-0 z-0 pointer-events-none">
+        <div class="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-purple-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob"></div>
+        <div class="absolute top-[20%] right-[-10%] w-[400px] h-[400px] bg-cyan-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob" style="animation-delay: 2s"></div>
+        <div class="absolute bottom-[-10%] left-[20%] w-[600px] h-[600px] bg-rose-600/20 rounded-full mix-blend-screen filter blur-[100px] animate-blob" style="animation-delay: 4s"></div>
     </div>
 
     <div id="view-selection" class="relative z-50 min-h-screen flex flex-col items-center justify-center p-6">
-        <div class="glass-card p-10 rounded-[32px] shadow-2xl max-w-md w-full text-center animate-fade-in-up border-t border-white/20">
-            <div class="w-16 h-16 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-2xl mx-auto flex items-center justify-center mb-6 shadow-lg shadow-blue-500/30">
-                <i data-lucide="scan-face" class="w-8 h-8 text-white"></i>
+        <div class="glass-panel p-8 md:p-12 rounded-[3rem] w-full max-w-2xl text-center relative overflow-hidden animate-pop-in">
+            <div class="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-1 bg-gradient-to-r from-transparent via-blue-500 to-transparent opacity-50"></div>
+
+            <div class="mb-10 animate-float">
+                <div class="w-20 h-20 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-cyan-500/30 mb-6 rotate-3 hover:rotate-6 transition-transform">
+                    <i data-lucide="zap" class="w-10 h-10 text-white fill-white/20"></i>
+                </div>
+                <h1 class="text-4xl md:text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400 tracking-tight mb-2">Staff Hub</h1>
+                <p class="text-slate-400 font-medium font-khmer">ជ្រើសរើសទីតាំងរបស់អ្នក</p>
             </div>
-            <h1 class="text-3xl font-extrabold text-white mb-2 tracking-tight">Staff Portal</h1>
-            <p class="text-slate-400 mb-8 font-medium">Select your current zone</p>
             
-            <div class="flex flex-col gap-4">
-                <button onclick="enterArea('A')" class="group relative overflow-hidden rounded-2xl bg-slate-800/50 p-1 hover:bg-blue-500/10 transition-all duration-300 border border-slate-700 hover:border-blue-500">
-                    <div class="flex items-center p-4">
-                        <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-blue-500/30">A</div>
-                        <div class="text-left ml-4 flex-1">
-                            <h2 class="text-lg font-bold text-white">Zone A</h2>
-                            <span class="text-xs font-semibold text-blue-400 uppercase tracking-widest">Lounge / Canteen</span>
-                        </div>
-                        <i data-lucide="arrow-right" class="text-slate-500 group-hover:text-blue-400 transition-transform group-hover:translate-x-1"></i>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <button onclick="enterArea('A')" class="group relative bg-slate-800/40 hover:bg-blue-600/20 border border-white/5 hover:border-blue-500/50 rounded-3xl p-6 transition-all duration-300 hover:scale-[1.02]">
+                    <div class="absolute inset-0 bg-blue-500/5 blur-xl group-hover:opacity-100 opacity-0 transition-opacity"></div>
+                    <div class="relative flex flex-col items-center">
+                        <div class="w-14 h-14 bg-blue-600 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-blue-500/40 mb-4 group-hover:scale-110 transition-transform">A</div>
+                        <h2 class="text-xl font-bold text-white mb-1">តំបន់ A</h2>
+                        <span class="text-xs font-semibold text-blue-400 uppercase tracking-widest font-khmer">អាហារដ្ឋាន</span>
                     </div>
                 </button>
-                <button onclick="enterArea('B')" class="group relative overflow-hidden rounded-2xl bg-slate-800/50 p-1 hover:bg-rose-500/10 transition-all duration-300 border border-slate-700 hover:border-rose-500">
-                    <div class="flex items-center p-4">
-                        <div class="w-12 h-12 bg-rose-600 rounded-xl flex items-center justify-center text-xl font-bold text-white shadow-lg shadow-rose-500/30">B</div>
-                        <div class="text-left ml-4 flex-1">
-                            <h2 class="text-lg font-bold text-white">Zone B</h2>
-                            <span class="text-xs font-semibold text-rose-400 uppercase tracking-widest">Garden / Outside</span>
-                        </div>
-                        <i data-lucide="arrow-right" class="text-slate-500 group-hover:text-rose-400 transition-transform group-hover:translate-x-1"></i>
+
+                <button onclick="enterArea('B')" class="group relative bg-slate-800/40 hover:bg-rose-600/20 border border-white/5 hover:border-rose-500/50 rounded-3xl p-6 transition-all duration-300 hover:scale-[1.02]">
+                    <div class="absolute inset-0 bg-rose-500/5 blur-xl group-hover:opacity-100 opacity-0 transition-opacity"></div>
+                    <div class="relative flex flex-col items-center">
+                        <div class="w-14 h-14 bg-rose-600 rounded-full flex items-center justify-center text-2xl font-bold text-white shadow-lg shadow-rose-500/40 mb-4 group-hover:scale-110 transition-transform">B</div>
+                        <h2 class="text-xl font-bold text-white mb-1">តំបន់ B</h2>
+                        <span class="text-xs font-semibold text-rose-400 uppercase tracking-widest font-khmer">សួនច្បារ</span>
                     </div>
                 </button>
             </div>
-            <div id="loader-initial" class="mt-8 text-xs font-bold text-slate-500 uppercase tracking-widest flex justify-center items-center gap-2">
-                <i data-lucide="loader" class="animate-spin w-3 h-3"></i> Connecting...
-            </div>
+            
+            <div id="loader-initial" class="mt-8 h-6 flex justify-center items-center"></div>
         </div>
     </div>
 
     <div id="view-dashboard" class="relative z-40 hidden flex-col min-h-screen">
         
-        <header class="glass-header sticky top-0 z-50">
-            <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col gap-3">
+        <header class="sticky top-4 z-50 px-4 mb-2">
+            <div class="glass-panel rounded-2xl p-3 max-w-7xl mx-auto flex flex-col gap-3 shadow-2xl">
                 <div class="flex items-center justify-between">
-                    <div class="flex items-center gap-4">
-                        <button onclick="goBack()" class="w-10 h-10 flex items-center justify-center bg-slate-800/50 hover:bg-slate-700 rounded-full transition text-slate-300 border border-white/10">
-                            <i data-lucide="arrow-left" class="w-5 h-5"></i>
+                    <div class="flex items-center gap-3">
+                        <button onclick="goBack()" class="w-10 h-10 flex items-center justify-center bg-white/5 hover:bg-white/10 rounded-full transition text-slate-300 border border-white/5 active:scale-95">
+                            <i data-lucide="chevron-left" class="w-6 h-6"></i>
                         </button>
                         <div>
-                            <h1 class="font-bold text-lg text-white leading-none">Dashboard</h1>
-                            <div class="flex items-center gap-2 mt-1">
-                                <span id="displayArea" class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-500/30">--</span>
-                                <span class="text-[10px] font-bold text-slate-400">Active: <span id="itemCount" class="text-white">0</span></span>
+                            <div class="flex items-center gap-2">
+                                <h1 class="font-bold text-lg text-white leading-none tracking-tight">Staff Portal</h1>
+                                <span id="displayAreaBadge" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-sm">AREA A</span>
                             </div>
+                            <p class="text-[10px] text-slate-400 font-khmer mt-0.5">កំពុងសម្រាក: <span id="itemCount" class="text-white font-bold text-sm">0</span> នាក់</p>
                         </div>
                     </div>
-                    
-                    <div class="relative w-32 md:w-64">
-                        <i data-lucide="search" class="absolute left-3 top-2.5 w-4 h-4 text-slate-500"></i>
-                        <input type="text" id="searchBar" class="w-full bg-slate-800/50 focus:bg-slate-800 border border-white/10 focus:border-blue-500 rounded-xl py-2 pl-9 pr-3 text-sm text-white placeholder-slate-500 outline-none transition-all" placeholder="Search...">
+
+                    <div class="relative w-40 sm:w-64 group">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="search" class="w-4 h-4 text-slate-500 group-focus-within:text-cyan-400 transition-colors"></i>
+                        </div>
+                        <input type="text" id="searchBar" class="block w-full pl-10 pr-3 py-2.5 bg-slate-900/50 border border-white/10 rounded-xl text-sm placeholder-slate-500 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 transition-all font-khmer" placeholder="ស្វែងរក...">
                     </div>
                 </div>
 
-                <div class="bg-slate-800/50 p-1 rounded-xl flex w-full border border-white/5">
-                    <button onclick="switchTab('staff')" id="tab-staff" class="active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2">
-                        <i data-lucide="users" class="w-4 h-4"></i> Take Break
+                <div class="bg-slate-900/60 p-1.5 rounded-xl flex w-full relative isolate">
+                    <button onclick="switchTab('staff')" id="tab-staff" class="flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 bg-slate-700 text-white shadow-md">
+                        <i data-lucide="layout-grid" class="w-4 h-4"></i> បញ្ជីបុគ្គលិក
                     </button>
-                    <button onclick="switchTab('active')" id="tab-active" class="inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2">
-                        <i data-lucide="coffee" class="w-4 h-4"></i> On Break
+                    <button onclick="switchTab('active')" id="tab-active" class="flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 text-slate-400 hover:text-white">
+                        <i data-lucide="timer" class="w-4 h-4"></i> កំពុងសម្រាក
                     </button>
                 </div>
             </div>
         </header>
 
-        <main class="flex-grow p-4 pb-24">
-            <div class="max-w-7xl mx-auto">
+        <main class="flex-grow px-4 pb-24 pt-2">
+            <div class="max-w-7xl mx-auto min-h-[60vh]">
                 
-                <div id="container-staff" class="animate-fade-in-up">
-                    <div id="staff-placeholder" class="flex flex-col items-center justify-center py-20 text-center opacity-60">
-                        <div class="bg-white/5 p-6 rounded-full mb-4">
-                            <i data-lucide="search" class="w-12 h-12 text-slate-400"></i>
+                <div id="container-staff">
+                    <div id="staff-placeholder" class="flex flex-col items-center justify-center py-32 text-center opacity-40">
+                        <div class="w-20 h-20 bg-gradient-to-tr from-slate-700 to-slate-800 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                            <i data-lucide="search-code" class="w-10 h-10 text-slate-400"></i>
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-1">Search to Find Staff</h3>
-                        <p class="text-slate-400 text-sm">Type a name or ID to start a break</p>
-                    </div>
-
-                    <div id="staff-not-found" class="hidden flex flex-col items-center justify-center py-20 text-center opacity-60">
-                        <div class="bg-rose-500/10 p-6 rounded-full mb-4">
-                            <i data-lucide="user-x" class="w-12 h-12 text-rose-400"></i>
-                        </div>
-                        <h3 class="text-xl font-bold text-white mb-1">No Staff Found</h3>
-                        <p class="text-slate-400 text-sm">Try a different name or ID</p>
+                        <h3 class="text-xl font-bold text-white mb-1 font-khmer">ស្វែងរកបុគ្គលិក</h3>
+                        <p class="text-slate-400 text-sm">ចាប់ផ្តើមវាយបញ្ចូលឈ្មោះ ឬអាយឌី</p>
                     </div>
 
                     <div id="staffGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"></div>
                 </div>
 
-                <div id="container-active" class="hidden animate-fade-in-up">
-                    <div id="activeGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"></div>
-                    <div id="no-active" class="hidden flex flex-col items-center justify-center py-20 opacity-50">
-                        <i data-lucide="coffee" class="w-12 h-12 text-slate-500 mb-2"></i>
-                        <p class="text-slate-400 text-sm">Everyone is working</p>
+                <div id="container-active" class="hidden">
+                    <div id="no-active" class="hidden flex flex-col items-center justify-center py-32 opacity-40">
+                        <div class="w-20 h-20 bg-slate-800/50 rounded-full flex items-center justify-center mb-4 border border-white/5">
+                            <i data-lucide="coffee" class="w-10 h-10 text-slate-500"></i>
+                        </div>
+                        <p class="text-slate-400 font-khmer">មិនមានអ្នកសម្រាកទេ</p>
                     </div>
+                    <div id="activeGrid" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4"></div>
                 </div>
 
             </div>
@@ -197,40 +207,43 @@
     </div>
 
     <script>
-        const API_URL = "https://attendance-break-di.onrender.com";
-
-        // --- GLOBAL STATE ---
+        const API_URL = "http://localhost:3000";
+        
         let allStaff = [];
         let activeBreaks = [];
         let currentArea = null;
         let currentTab = 'staff';
-        let refreshTimer = null; 
+        let refreshTimer = null;
         let minuteTimer = null;
+        let staffCacheData = [];
 
         const Toast = Swal.mixin({
             toast: true,
-            position: 'bottom-end',
+            position: 'top-end',
             showConfirmButton: false,
-            timer: 3000,
+            timer: 2000,
             timerProgressBar: true,
-            didOpen: (toast) => {
-                toast.addEventListener('mouseenter', Swal.stopTimer)
-                toast.addEventListener('mouseleave', Swal.resumeTimer)
-            }
+            background: '#1e293b',
+            color: '#fff',
+            customClass: { popup: 'border border-white/10 rounded-xl shadow-2xl' }
         });
 
-        lucide.createIcons();
-
-        // --- DATA LOADING ---
+        // --- CORE LOGIC ---
         async function loadData() {
             try {
-                await fetchData(true);
-                document.getElementById('loader-initial').innerHTML = '<span class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="wifi" class="w-3 h-3"></i> Online</span>';
+                document.getElementById('loader-initial').innerHTML = '<i data-lucide="loader-2" class="animate-spin text-cyan-400 w-5 h-5"></i>';
                 lucide.createIcons();
-                refreshTimer = setInterval(() => fetchData(false), 2000); 
-                minuteTimer = setInterval(() => updateTimeDisplays(), 5000);
+                
+                const staffRes = await fetch(`${API_URL}/staff`);
+                if(staffRes.ok) staffCacheData = await staffRes.json();
+                
+                await fetchData(true);
+                
+                refreshTimer = setInterval(() => fetchData(false), 3000);
+                minuteTimer = setInterval(() => updateTimeDisplays(), 1000);
+                document.getElementById('loader-initial').innerHTML = '';
             } catch (err) {
-                document.getElementById('loader-initial').innerHTML = '<span class="text-rose-500 font-bold">Offline</span>';
+                document.getElementById('loader-initial').innerHTML = '<span class="text-rose-500 text-xs font-bold">Connection Failed</span>';
             }
         }
 
@@ -240,194 +253,93 @@
                     fetch(`${API_URL}/staff`),
                     fetch(`${API_URL}/active-breaks`)
                 ]);
-                
                 const newStaff = await resStaff.json();
                 const newBreaks = await resBreaks.json();
 
-                if(JSON.stringify(newBreaks) !== JSON.stringify(activeBreaks) || isInitial) {
-                    allStaff = newStaff;
-                    activeBreaks = newBreaks;
-                    updateUI(!isInitial);
+                // Always update state variables
+                allStaff = newStaff;
+                activeBreaks = newBreaks;
+
+                // Force update UI if specific tab is active
+                if(currentTab === 'active' || isInitial) {
+                    updateUI(false); 
                 }
-            } catch (e) { console.error("Poll Error", e); }
+            } catch (e) { console.error("Sync Error", e); }
         }
 
-        function updateUI(disableAnimation = false) {
+        function updateUI(disableAnimation) {
             if (currentTab === 'active') {
-                renderActiveBreaks(activeBreaks, disableAnimation);
+                renderActiveBreaks(activeBreaks);
             } else if (currentTab === 'staff') {
                 const searchTerm = document.getElementById('searchBar').value.toLowerCase();
                 if (searchTerm.length > 0) {
-                    const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(searchTerm) || (p.id && p.id.toString().includes(searchTerm)));
-                    renderStaff(filtered, disableAnimation);
+                    const filtered = allStaff.filter(p => 
+                        (p.name_kh && p.name_kh.toLowerCase().includes(searchTerm)) || 
+                        (p.name_en && p.name_en.toLowerCase().includes(searchTerm)) || 
+                        (p.id && p.id.toString().includes(searchTerm))
+                    );
+                    renderStaff(filtered);
                 }
             }
         }
 
-        // --- RENDER ACTIVE BREAKS (Strictly Filtered) ---
-        function renderActiveBreaks(list, disableAnimation) {
-            const grid = document.getElementById('activeGrid');
-            const emptyMsg = document.getElementById('no-active');
-            
-            // [CRITICAL FIX] Strict Zone Filtering
-            const filteredList = list.filter(item => String(item.area).trim() === String(currentArea).trim());
-            
-            document.getElementById('itemCount').innerText = filteredList.length;
-
-            if (filteredList.length === 0) {
-                grid.innerHTML = '';
-                emptyMsg.classList.remove('hidden');
-                return;
-            } else {
-                emptyMsg.classList.add('hidden');
-            }
-
-            // Remove items not in filtered list
-            const currentIds = new Set(filteredList.map(i => i.id));
-            Array.from(grid.children).forEach(card => {
-                if (!currentIds.has(card.dataset.id)) card.remove();
-            });
-
-            filteredList.forEach((item) => {
-                const existingCard = document.getElementById(`break-card-${item.id}`);
-                const staffInfo = allStaff.find(s => s.id == item.id);
-                const imgUrl = staffInfo ? staffInfo.image : `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(item.name)}`;
-                const minsGone = getMinutesDiff(item.timeOut);
-                const isOvertime = minsGone > 15;
-                const overtimeAmount = minsGone - 15;
-
-                const borderClass = isOvertime ? "border-rose-500/50 shadow-rose-900/20 shadow-lg animate-pulse-glow bg-rose-900/10" : "border-white/10";
-                const timeColor = isOvertime ? "text-rose-400" : "text-slate-200";
-                const statusHtml = isOvertime
-                    ? `<span class="absolute top-2 right-2 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">+${overtimeAmount}m</span>`
-                    : `<span class="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">OK</span>`;
-
-                if (existingCard) {
-                    const timeEl = document.getElementById(`time-val-${item.id}`);
-                    const badgeContainer = document.getElementById(`badge-container-${item.id}`);
-                    
-                    if(timeEl) {
-                        timeEl.innerHTML = `${minsGone}<span class="text-xs font-bold text-slate-500 ml-0.5">min</span>`;
-                        timeEl.className = `text-xl font-black ${timeColor} leading-none my-0.5`;
-                    }
-                    if(badgeContainer) badgeContainer.innerHTML = statusHtml;
-                    existingCard.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass}`;
-
-                } else {
-                    const card = document.createElement('div');
-                    card.id = `break-card-${item.id}`;
-                    card.dataset.id = item.id;
-                    card.dataset.timeout = item.timeOut; 
-                    let anim = disableAnimation ? "" : "animate-fade-in-up";
-                    card.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass} ${anim}`;
-                    
-                    card.innerHTML = `
-                        <div id="badge-container-${item.id}">${statusHtml}</div>
-                        <img src="${imgUrl}" class="w-14 h-14 rounded-full object-cover mb-2 shadow-lg border-2 border-white/10 bg-slate-800 mt-4">
-                        <h3 class="font-bold text-white text-sm mb-0.5 leading-tight truncate w-full">${item.name}</h3>
-                        <div class="bg-slate-900/50 rounded-lg p-2 mb-2 w-full border border-white/5 mt-1">
-                            <p class="text-[9px] text-slate-500 uppercase font-bold tracking-wider">Elapsed</p>
-                            <p id="time-val-${item.id}" class="text-xl font-black ${timeColor} leading-none my-0.5">${minsGone}<span class="text-xs font-bold text-slate-500 ml-0.5">min</span></p>
-                            <p class="text-[9px] text-slate-400">Out: ${item.timeOut}</p>
-                        </div>
-                        <button onclick="confirmTimeIn('${item.id}', '${item.name}', ${isOvertime}, ${overtimeAmount})" 
-                            class="w-full bg-slate-700 hover:bg-emerald-600 text-white py-2 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95 border border-white/5">
-                            <i data-lucide="log-in" class="w-3.5 h-3.5"></i> Clock In
-                        </button>
-                    `;
-                    grid.appendChild(card);
-                }
-            });
-            
-            if(!disableAnimation) lucide.createIcons();
-        }
-
-        // --- CLIENT SIDE TIMER ---
-        function updateTimeDisplays() {
-            if (currentTab !== 'active') return;
-            const cards = document.querySelectorAll('[id^="break-card-"]');
-            
-            cards.forEach(card => {
-                const timeOut = card.dataset.timeout;
-                const id = card.dataset.id;
-                if (!timeOut) return;
-
-                const minsGone = getMinutesDiff(timeOut);
-                const isOvertime = minsGone > 15;
-                const overtimeAmount = minsGone - 15;
-                const timeColor = isOvertime ? "text-rose-400" : "text-slate-200";
-                
-                const timeEl = document.getElementById(`time-val-${id}`);
-                if (timeEl) {
-                    timeEl.innerHTML = `${minsGone}<span class="text-xs font-bold text-slate-500 ml-0.5">min</span>`;
-                    timeEl.className = `text-xl font-black ${timeColor} leading-none my-0.5`;
-                }
-
-                const badgeContainer = document.getElementById(`badge-container-${id}`);
-                if(badgeContainer) {
-                    const statusHtml = isOvertime
-                    ? `<span class="absolute top-2 right-2 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">+${overtimeAmount}m</span>`
-                    : `<span class="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">OK</span>`;
-                    badgeContainer.innerHTML = statusHtml;
-                }
-
-                const borderClass = isOvertime ? "border-rose-500/50 shadow-rose-900/20 shadow-lg animate-pulse-glow bg-rose-900/10" : "border-white/10";
-                card.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass}`;
-            });
-        }
-
-        // --- RENDER STAFF ---
-        function renderStaff(list, disableAnimation) {
+        // --- RENDER FUNCTIONS ---
+        
+        function renderStaff(list) {
             const grid = document.getElementById('staffGrid');
             const placeholder = document.getElementById('staff-placeholder');
-            const notFound = document.getElementById('staff-not-found');
             
             grid.innerHTML = '';
             document.getElementById('itemCount').innerText = list.length;
 
-            if (list.length === 0) {
-                notFound.classList.remove('hidden');
-                placeholder.classList.add('hidden');
-                return;
-            } else {
-                notFound.classList.add('hidden');
-                placeholder.classList.add('hidden');
-            }
+            if (list.length === 0) return placeholder.classList.remove('hidden');
+            placeholder.classList.add('hidden');
 
-            list.forEach((person) => {
-                const isOnBreak = activeBreaks.some(b => b.id == person.id && !b.timeIn);
-                let cardClass = "glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all";
-                if (!disableAnimation) cardClass += " animate-fade-in-up";
-
-                let btnState = "";
-                let btnText = "Break";
-                let btnIcon = "coffee";
-                let btnColor = currentArea === 'A' ? "bg-blue-600 hover:bg-blue-500" : "bg-rose-600 hover:bg-rose-500";
+            list.forEach((person, index) => {
+                const breakData = activeBreaks.find(b => b.id == person.id && !b.timeIn);
+                const isOnBreak = !!breakData;
+                
+                // Color Logic
+                const btnColor = isOnBreak ? 'bg-slate-700 cursor-not-allowed' : (currentArea === 'A' ? 'bg-gradient-to-r from-blue-600 to-cyan-600 hover:shadow-cyan-500/30' : 'bg-gradient-to-r from-rose-600 to-pink-600 hover:shadow-pink-500/30');
+                
+                // UX: Tell user WHERE they are breaking if not in current area
+                let btnText = "ចេញសម្រាក";
+                let statusBadge = "";
                 
                 if(isOnBreak) {
-                    cardClass += " opacity-50 bg-slate-900/50 border-slate-700 grayscale"; 
-                    btnState = "disabled style='cursor:not-allowed; opacity:0.5;'";
-                    btnText = "On Break";
-                    btnIcon = "clock";
-                    btnColor = "bg-slate-700";
-                } else {
-                    cardClass += " hover:bg-white/5 hover:scale-[1.02] hover:shadow-xl hover:border-white/20";
+                    const breakArea = breakData.area || "?";
+                    if(breakArea !== currentArea) {
+                        btnText = `កំពុងនៅ Zone ${breakArea}`;
+                    } else {
+                        btnText = "កំពុងសម្រាក";
+                    }
                 }
-
-                const imgUrl = person.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(person.name_en)}`;
+                
+                const opacity = isOnBreak ? 'opacity-60 grayscale' : '';
+                
                 const card = document.createElement('div');
-                card.className = cardClass;
+                card.className = `glass-card rounded-2xl p-4 flex flex-col items-center relative group animate-pop-in ${opacity}`;
+                card.style.animationDelay = `${index * 50}ms`;
+
+                const imgUrl = person.image || `https://ui-avatars.com/api/?background=random&color=fff&name=${encodeURIComponent(person.name_en)}`;
+
                 card.innerHTML = `
-                    ${isOnBreak ? `<div class="absolute top-2 right-2 bg-slate-800 text-slate-300 text-[9px] font-bold px-2 py-0.5 rounded border border-slate-600">BUSY</div>` : ''}
-                    <div class="absolute top-2 left-2 px-1.5 py-0.5 bg-white/10 border border-white/5 rounded text-[9px] font-mono text-slate-400 font-bold">#${person.id || '...'}</div>
-                    <div class="relative mb-2 mt-1">
-                        <img src="${imgUrl}" class="w-16 h-16 rounded-full object-cover shadow-lg border-2 border-white/10 bg-slate-800">
+                    <div class="absolute top-3 left-3 px-2 py-0.5 bg-slate-950/50 border border-white/10 rounded-md text-[10px] font-mono text-slate-400 font-bold tracking-wider">#${person.id}</div>
+                    
+                    <div class="relative mb-3 mt-2">
+                        <div class="absolute inset-0 bg-gradient-to-tr from-white/20 to-transparent rounded-full blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <img src="${imgUrl}" class="w-20 h-20 rounded-full object-cover shadow-2xl border-[3px] border-slate-800 relative z-10">
+                        ${isOnBreak ? '<div class="absolute bottom-0 right-0 w-5 h-5 bg-slate-500 border-2 border-slate-900 rounded-full flex items-center justify-center z-20"><i data-lucide="clock" class="w-3 h-3 text-white"></i></div>' : '<div class="absolute bottom-0 right-0 w-5 h-5 bg-emerald-500 border-2 border-slate-900 rounded-full z-20 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>'}
                     </div>
-                    <h3 class="font-bold text-white text-sm truncate w-full leading-tight mb-0.5">${person.name_en}</h3>
-                    <p class="text-[10px] text-slate-400 font-medium mb-3 uppercase tracking-wide truncate w-full bg-white/5 rounded py-0.5 px-1">${person.group || 'Staff'}</p>
-                    <button ${btnState} onclick='confirmStartBreak(${JSON.stringify(person).replace(/'/g, "&#39;")})' 
-                        class="w-full ${btnColor} text-white py-2 rounded-xl font-bold text-xs shadow-lg transition-all flex items-center justify-center gap-1.5 active:scale-95">
-                        <i data-lucide="${btnIcon}" class="w-3.5 h-3.5"></i> ${btnText}
+
+                    <div class="text-center w-full mb-3">
+                        <h3 class="font-bold text-white text-base truncate font-khmer leading-snug">${person.name_kh || person.name_en}</h3>
+                        <p class="text-[11px] text-slate-400 font-medium truncate uppercase tracking-wide">${person.group || 'Employee'}</p>
+                    </div>
+
+                    <button ${isOnBreak ? 'disabled' : ''} onclick='confirmStartBreak(${JSON.stringify(person).replace(/'/g, "&#39;")})' 
+                        class="w-full ${btnColor} text-white py-2.5 rounded-xl font-bold text-xs shadow-lg transition-all transform active:scale-95 flex items-center justify-center gap-2 font-khmer">
+                        ${isOnBreak ? '<i data-lucide="coffee" class="w-3.5 h-3.5"></i>' : '<i data-lucide="log-out" class="w-3.5 h-3.5"></i>'} ${btnText}
                     </button>
                 `;
                 grid.appendChild(card);
@@ -435,174 +347,253 @@
             lucide.createIcons();
         }
 
-        // --- UTILS ---
-        function getMinutesDiff(timeStr) {
-            if (!timeStr) return 0;
-            const parts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
-            if (!parts) return 0;
-            let hours = parseInt(parts[1], 10);
-            const minutes = parseInt(parts[2], 10);
-            const modifier = parts[3].toUpperCase();
-            if (hours === 12) hours = modifier === 'PM' ? 12 : 0;
-            else hours = modifier === 'PM' ? hours + 12 : hours;
-            const now = new Date();
-            const breakDate = new Date();
-            breakDate.setHours(hours, minutes, 0, 0);
-            if (breakDate > now) breakDate.setDate(breakDate.getDate() - 1);
-            const diffMins = Math.floor((now - breakDate) / 1000 / 60);
-            return diffMins > 0 ? diffMins : 0;
-        }
-
-        function switchTab(tab) {
-            currentTab = tab;
-            const tabStaff = document.getElementById('tab-staff');
-            const tabActive = document.getElementById('tab-active');
-            const conStaff = document.getElementById('container-staff');
-            const conActive = document.getElementById('container-active');
-            const searchBar = document.getElementById('searchBar');
-
-            if (tab === 'staff') {
-                tabStaff.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
-                tabActive.className = "inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2";
-                conStaff.classList.remove('hidden');
-                conActive.classList.add('hidden');
-                
-                searchBar.value = '';
-                document.getElementById('staffGrid').innerHTML = '';
-                document.getElementById('staff-placeholder').classList.remove('hidden');
-                document.getElementById('staff-not-found').classList.add('hidden');
-                document.getElementById('itemCount').innerText = "0";
-
-            } else {
-                tabStaff.className = "inactive-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all flex justify-center items-center gap-2";
-                tabActive.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
-                conStaff.classList.add('hidden');
-                conActive.classList.remove('hidden');
-                
-                searchBar.value = ''; 
-                fetchData(true); 
-            }
-        }
-
-        function enterArea(area) {
-            if(allStaff.length === 0) return Swal.fire({ icon: 'info', title: 'Loading...', toast:true, position:'bottom-end', showConfirmButton:false, timer:1000 });
-            currentArea = area;
-            document.getElementById('displayArea').innerText = `ZONE ${area}`;
+        function renderActiveBreaks(list) {
+            const grid = document.getElementById('activeGrid');
+            const emptyMsg = document.getElementById('no-active');
             
-            // CLEAR GRIDS TO PREVENT FLASHING
+            // STRICT FILTERING: Only show items that match the CURRENT Area
+            const filteredList = list.filter(item => String(item.area).trim() === String(currentArea).trim());
+            document.getElementById('itemCount').innerText = filteredList.length;
+
+            if (filteredList.length === 0) {
+                // If filtered list is empty, CLEAR grid to avoid ghosts
+                grid.innerHTML = '';
+                return emptyMsg.classList.remove('hidden');
+            }
+            emptyMsg.classList.add('hidden');
+
+            // Cleanup: Remove cards that shouldn't be here (including those from other zones)
+            const newIds = new Set(filteredList.map(i => i.id));
+            Array.from(grid.children).forEach(card => {
+                if (!newIds.has(card.dataset.id)) card.remove();
+            });
+
+            filteredList.forEach((item, index) => {
+                const existingCard = document.getElementById(`break-card-${item.id}`);
+                if (existingCard) {
+                    existingCard.dataset.timeout = item.timeOut;
+                } else {
+                    const staffInfo = staffCacheData.find(s => s.id == item.id);
+                    const khName = staffInfo ? (staffInfo.name_kh || staffInfo.name_en) : item.name;
+                    const imgUrl = item.image || (staffInfo ? staffInfo.image : `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(item.name)}`);
+                    
+                    const card = document.createElement('div');
+                    card.id = `break-card-${item.id}`;
+                    card.dataset.id = item.id;
+                    card.dataset.timeout = item.timeOut;
+                    card.className = "glass-card rounded-2xl p-4 flex flex-col items-center relative animate-pop-in border border-white/5 bg-slate-800/40";
+                    card.style.animationDelay = `${index * 50}ms`;
+
+                    card.innerHTML = `
+                        <div id="status-glow-${item.id}" class="absolute inset-0 rounded-2xl opacity-0 transition-opacity duration-500 pointer-events-none"></div>
+                        
+                        <div class="relative mb-3 mt-1">
+                            <img src="${imgUrl}" class="w-16 h-16 rounded-full object-cover border-2 border-white/10 shadow-lg bg-slate-900">
+                             <div id="badge-icon-${item.id}" class="absolute -top-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-slate-900 shadow-lg text-white font-bold text-[10px]">
+                                <i data-lucide="check" class="w-3 h-3"></i>
+                            </div>
+                        </div>
+
+                        <div class="text-center w-full px-1 mb-3">
+                            <h3 class="font-bold text-white text-sm truncate font-khmer">${khName}</h3>
+                            <div class="flex items-center justify-center gap-1 mt-1 text-[10px] text-slate-500">
+                                <i data-lucide="clock" class="w-3 h-3"></i>
+                                <span>${item.timeOut}</span>
+                            </div>
+                        </div>
+
+                        <div class="bg-slate-950/60 rounded-xl p-3 w-full mb-3 border border-white/5 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-white/20 to-transparent"></div>
+                            <div class="text-center">
+                                <p class="text-[9px] text-slate-500 uppercase font-bold tracking-widest font-sans mb-1">DURATION</p>
+                                <p id="time-val-${item.id}" class="text-3xl font-black text-white font-mono tracking-tight tabular-nums">00</p>
+                                <p class="text-[10px] text-slate-500 font-khmer mt-[-2px]">នាទី</p>
+                            </div>
+                        </div>
+
+                        <button onclick="confirmTimeIn('${item.id}', '${khName}')" 
+                            class="w-full bg-slate-700 hover:bg-emerald-600 text-white py-3 rounded-xl font-bold text-xs shadow-lg transition-colors flex items-center justify-center gap-2 active:scale-95 group font-khmer">
+                            <span class="group-hover:hidden flex items-center gap-2"><i data-lucide="log-in" class="w-3.5 h-3.5"></i> ចូលធ្វើការ</span>
+                            <span class="hidden group-hover:flex items-center gap-2"><i data-lucide="check-circle-2" class="w-3.5 h-3.5"></i> បញ្ជាក់</span>
+                        </button>
+                    `;
+                    grid.appendChild(card);
+                }
+            });
+            lucide.createIcons();
+        }
+
+        function updateTimeDisplays() {
+            if (currentTab !== 'active') return;
+            
+            document.querySelectorAll('[id^="break-card-"]').forEach(card => {
+                const timeOut = card.dataset.timeout;
+                const id = card.dataset.id;
+                if (!timeOut) return;
+
+                const minsGone = getMinutesDiff(timeOut);
+                const isOvertime = minsGone > 15;
+                const overtimeAmt = minsGone - 15;
+
+                const timeEl = document.getElementById(`time-val-${id}`);
+                if (timeEl && timeEl.innerText !== String(minsGone)) {
+                    timeEl.innerText = minsGone;
+                    timeEl.style.color = isOvertime ? '#fb7185' : '#fff';
+                }
+
+                const glowEl = document.getElementById(`status-glow-${id}`);
+                const badgeIcon = document.getElementById(`badge-icon-${id}`);
+                
+                if (isOvertime) {
+                    if(!card.classList.contains('border-rose-500/30')) {
+                        card.classList.add('border-rose-500/30', 'animate-pulse-glow');
+                        card.classList.remove('border-white/5');
+                        glowEl.className = "absolute inset-0 rounded-2xl bg-rose-500/10 animate-pulse-danger pointer-events-none opacity-100";
+                        badgeIcon.className = "absolute -top-1 -right-1 w-6 h-6 bg-rose-500 rounded-full flex items-center justify-center border-2 border-slate-900 shadow-lg text-white font-bold text-[10px] animate-bounce";
+                        badgeIcon.innerHTML = `<span class="font-bold">+${overtimeAmt}</span>`;
+                    }
+                }
+            });
+        }
+
+        function getMinutesDiff(timeStr) {
+            const now = new Date();
+            const [time, modifier] = timeStr.split(' ');
+            let [hours, minutes] = time.split(':');
+            hours = parseInt(hours);
+            if (hours === 12 && modifier === 'AM') hours = 0;
+            if (hours !== 12 && modifier === 'PM') hours += 12;
+            const breakTime = new Date();
+            breakTime.setHours(hours, parseInt(minutes), 0);
+            if (breakTime > now) breakTime.setDate(breakTime.getDate() - 1);
+            return Math.floor((now - breakTime) / 60000);
+        }
+
+        // --- NAVIGATION ---
+        function enterArea(area) {
+            if(allStaff.length === 0) return;
+            currentArea = area;
+            
+            // -----------------------------------------------------
+            // CRITICAL FIX: HARD RESET OF GRIDS TO PREVENT FLICKER
+            // -----------------------------------------------------
             document.getElementById('activeGrid').innerHTML = '';
             document.getElementById('staffGrid').innerHTML = '';
+            // -----------------------------------------------------
 
-            const selection = document.getElementById('view-selection');
-            selection.classList.add('opacity-0', 'scale-95', 'transition-all', 'duration-500');
-            setTimeout(() => {
-                selection.classList.add('hidden');
-                const dash = document.getElementById('view-dashboard');
-                dash.classList.remove('hidden');
-                dash.classList.add('flex');
-            }, 300);
-            switchTab('staff'); 
+            const badge = document.getElementById('displayAreaBadge');
+            badge.innerText = `AREA ${area}`;
+            if(area === 'A') badge.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-blue-500 to-cyan-500 text-white shadow-lg shadow-cyan-500/30";
+            else badge.className = "px-2 py-0.5 rounded-full text-[10px] font-black bg-gradient-to-r from-rose-500 to-pink-500 text-white shadow-lg shadow-rose-500/30";
+
+            document.getElementById('view-selection').classList.add('hidden');
+            document.getElementById('view-dashboard').classList.remove('hidden');
+            document.getElementById('view-dashboard').classList.add('flex');
+            
+            switchTab('staff');
         }
 
         function goBack() {
             currentArea = null;
-            // Clear grids on exit
-            document.getElementById('activeGrid').innerHTML = '';
+            document.getElementById('activeGrid').innerHTML = ''; // Clear on exit too
             document.getElementById('staffGrid').innerHTML = '';
             
             document.getElementById('view-dashboard').classList.add('hidden');
             document.getElementById('view-dashboard').classList.remove('flex');
-            const selection = document.getElementById('view-selection');
-            selection.classList.remove('hidden', 'opacity-0', 'scale-95');
+            document.getElementById('view-selection').classList.remove('hidden');
+            const panel = document.querySelector('#view-selection .glass-panel');
+            panel.classList.remove('animate-pop-in');
+            void panel.offsetWidth; 
+            panel.classList.add('animate-pop-in');
         }
 
-        // --- ACTIONS ---
+        function switchTab(tab) {
+            currentTab = tab;
+            const btnStaff = document.getElementById('tab-staff');
+            const btnActive = document.getElementById('tab-active');
+            const searchBar = document.getElementById('searchBar');
+
+            if (tab === 'staff') {
+                btnStaff.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 bg-slate-700 text-white shadow-md shadow-slate-900/20";
+                btnActive.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 text-slate-400 hover:text-white";
+                
+                document.getElementById('container-staff').classList.remove('hidden');
+                document.getElementById('container-active').classList.add('hidden');
+                
+                searchBar.value = '';
+                document.getElementById('staffGrid').innerHTML = '';
+                document.getElementById('staff-placeholder').classList.remove('hidden');
+                document.getElementById('itemCount').innerText = "0";
+            } else {
+                btnStaff.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 text-slate-400 hover:text-white";
+                btnActive.className = "flex-1 py-2.5 rounded-lg text-xs font-bold transition-all duration-300 flex justify-center items-center gap-2 font-khmer relative z-10 bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-500/20";
+                
+                document.getElementById('container-staff').classList.add('hidden');
+                document.getElementById('container-active').classList.remove('hidden');
+                
+                searchBar.value = '';
+                fetchData(true);
+            }
+        }
+
         function confirmStartBreak(person) {
-            const color = currentArea === 'A' ? '#3b82f6' : '#f43f5e';
+            const color = currentArea === 'A' ? '#06b6d4' : '#f43f5e'; 
             Swal.fire({
-                title: 'Start Break?',
-                html: `<div class="flex flex-col items-center gap-2 mt-2">
-                        <img src="${person.image || 'https://via.placeholder.com/50'}" class="w-16 h-16 rounded-full border-2 border-slate-600 object-cover">
-                        <p class="text-white font-bold text-lg">${person.name_en}</p>
-                        <p class="text-slate-400 text-sm">Zone <b style="color:${color}">${currentArea}</b></p>
+                title: 'ចាប់ផ្តើមសម្រាក?',
+                html: `<div class="mt-4 flex flex-col items-center">
+                        <div class="p-1 rounded-full border-2 border-dashed border-slate-600 mb-4">
+                            <img src="${person.image || 'https://via.placeholder.com/100'}" class="w-20 h-20 rounded-full object-cover">
+                        </div>
+                        <h3 class="text-xl font-bold text-white font-khmer">${person.name_kh || person.name_en}</h3>
+                        <p class="text-slate-400 text-sm mt-1 font-khmer">តំបន់ <span style="color:${color}; font-weight:bold;">${currentArea}</span></p>
                        </div>`,
                 showCancelButton: true,
-                confirmButtonText: 'Confirm',
+                confirmButtonText: 'យល់ព្រម',
+                cancelButtonText: 'ទេ',
                 confirmButtonColor: color,
-                background: '#1e293b'
+                cancelButtonColor: '#334155',
+                background: '#0f172a',
+                backdrop: `rgba(0,0,0,0.8)`
             }).then((result) => {
                 if (result.isConfirmed) submitBreak(person);
             });
         }
 
         async function submitBreak(person) {
-            Swal.fire({ title: '', html: '<i data-lucide="loader-2" class="w-10 h-10 animate-spin text-blue-500"></i>', showConfirmButton: false, background: 'transparent', didOpen: () => lucide.createIcons() });
             try {
-                const res = await fetch(`${API_URL}/break`, {
+                await fetch(`${API_URL}/break`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: person.id, name: person.name_en, group: person.group, area: currentArea })
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ id: person.id, name: person.name_kh || person.name_en, group: person.group, area: currentArea })
                 });
-                if(res.ok) {
-                    await fetchData(true);
-                    Swal.close();
-                    Toast.fire({ icon: 'success', title: 'Break Started' });
-                }
-            } catch (e) { Swal.fire('Error', 'Connection Failed', 'error'); }
-        }
-
-        function confirmTimeIn(id, name, isOvertime, amount) {
-            // Optimistic UI: Remove card immediately
-            const card = document.getElementById(`break-card-${id}`);
-            if(card) {
-                card.style.transform = 'scale(0.9) translateY(20px)';
-                card.style.opacity = '0';
-                setTimeout(() => card.remove(), 300);
-            }
-
-            // Actual Request
-            submitTimeIn(id, name);
+                await fetchData(true);
+                Toast.fire({ icon: 'success', title: 'បានសម្រាកជោគជ័យ' });
+            } catch (e) { Toast.fire({ icon: 'error', title: 'Connection Failed' }); }
         }
 
         async function submitTimeIn(id, name) {
             try {
-                const res = await fetch(`${API_URL}/timein`, {
+                await fetch(`${API_URL}/timein`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ id: id })
                 });
-                if(res.ok) {
-                    await fetchData(true); // Sync with server
-                    Toast.fire({ icon: 'success', title: `Welcome back, ${name}` });
-                }
-            } catch (e) { 
-                Swal.fire('Error', 'Connection Failed', 'error'); 
-                fetchData(true); // Revert UI on error
-            }
+                await fetchData(true);
+                Toast.fire({ icon: 'success', title: 'ស្វាគមន៍ត្រឡប់មកវិញ' });
+            } catch (e) { Toast.fire({ icon: 'error', title: 'Connection Failed' }); }
         }
 
-        document.getElementById('searchBar').addEventListener('input', (e) => {
-            const term = e.target.value.toLowerCase();
-            const placeholder = document.getElementById('staff-placeholder');
-            const grid = document.getElementById('staffGrid');
-
-            if (currentTab === 'staff') {
-                if (term.length === 0) {
-                    grid.innerHTML = '';
-                    placeholder.classList.remove('hidden');
-                    document.getElementById('staff-not-found').classList.add('hidden');
-                    document.getElementById('itemCount').innerText = "0";
-                } else {
-                    const filtered = allStaff.filter(p => p.name_en.toLowerCase().includes(term) || (p.id && p.id.toString().includes(term)));
-                    placeholder.classList.add('hidden');
-                    renderStaff(filtered, true);
-                }
-            } else {
-                const filtered = activeBreaks.filter(p => p.name.toLowerCase().includes(term) || p.id.toString().includes(term));
-                renderActiveBreaks(filtered, true);
+        function confirmTimeIn(id, name) {
+            const card = document.getElementById(`break-card-${id}`);
+            if(card) {
+                card.style.transform = "scale(0.8) translateY(-20px)";
+                card.style.opacity = "0";
             }
-        });
+            setTimeout(() => submitTimeIn(id, name), 200);
+        }
 
+        document.getElementById('searchBar').addEventListener('input', () => updateUI(false));
+        
         loadData();
     </script>
 </body>

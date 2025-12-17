@@ -21,27 +21,31 @@ const DI_SHEET_NAME = 'Sheet3';
 const TEMPLATE_SHEET_NAME = 'Sheet1';
 
 // ==========================
-// CACHE SYSTEM (Fixes Quota Issues)
+// AUTH CONFIGURATION
+// ==========================
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// ==========================
+// CACHE SYSTEM
 // ==========================
 let STAFF_CACHE = {
     data: null,
     imageMap: null,
+    idMap: null,
+    nameMap: null, // New: Maps Any Name (EN/KH) -> Image
     timestamp: 0,
-    duration: 5 * 60 * 1000 // Cache Staff for 5 Minutes
+    duration: 2 * 60 * 1000 // Reduced cache time for easier testing
 };
 
 let META_CACHE = {
     sheets: null,
     timestamp: 0,
-    duration: 60 * 1000 // Cache Sheet List for 1 Minute
+    duration: 60 * 1000 
 };
 
-// Queue to prevent double-fetching
 let fetchStaffPromise = null;
 
-// ==========================
-// AUTH
-// ==========================
 const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
@@ -108,21 +112,25 @@ function getDirectImageLink(url) {
     return url;
 }
 
+// Helper to normalize strings for comparison
+function safeKey(str) {
+    if (!str) return '';
+    return String(str).trim().toUpperCase();
+}
+
 // --- INTELLIGENT CACHING ---
 
 async function getCachedStaffData(sheets) {
     const now = Date.now();
     
-    // 1. Return Cache if valid
+    // Serve from cache if valid
     if (STAFF_CACHE.data && (now - STAFF_CACHE.timestamp < STAFF_CACHE.duration)) {
         return STAFF_CACHE;
     }
 
-    // 2. Wait if already fetching
     if (fetchStaffPromise) return fetchStaffPromise;
 
-    // 3. Fetch Fresh
-    console.log('🔄 Fetching Fresh Staff Data...');
+    console.log('🔄 Fetching Fresh Staff Data (Cache Expired or Empty)...');
     fetchStaffPromise = (async () => {
         try {
             const [mainRes, imgRes, diRes] = await Promise.all([
@@ -135,32 +143,68 @@ async function getCachedStaffData(sheets) {
             const imgRows = imgRes.data.values || [];
             const diRows = diRes.data.values || [];
 
+            console.log(`📊 Loaded ${mainRows.length} staff rows from DB.`);
+
             const scanMap = {};
             diRows.forEach(r => {
                 const status = r[5];
                 const nameEN = r[12];
                 if (status && status.includes('Scan') && nameEN) {
-                    scanMap[nameEN.trim().toUpperCase()] = { id: r[4], group: r[6] };
+                    const id = r[4] ? String(r[4]).trim() : null;
+                    if(id) scanMap[safeKey(nameEN)] = { id: id, group: r[6] };
                 }
             });
 
             const imageMap = {};
+            const idMap = {}; 
+            const nameMap = {}; // Backup map for Khmer names
+
             mainRows.forEach((row, i) => {
-                const name = row[4];
+                const id = row[1] ? String(row[1]).trim() : null; // Column B
+                const nameEN = row[4]; // Column E
+                const nameKH = row[3]; // Column D (Khmer Name)
+                
                 const imgFormula = imgRows[i] ? imgRows[i][0] : '';
-                if (name) imageMap[name.trim().toUpperCase()] = getDirectImageLink(imgFormula);
+                const imgUrl = getDirectImageLink(imgFormula);
+                
+                // Populate Maps
+                if (imgUrl) {
+                    if (id) idMap[id] = imgUrl;
+                    if (nameEN) nameMap[safeKey(nameEN)] = imgUrl;
+                    if (nameKH) nameMap[safeKey(nameKH)] = imgUrl;
+
+                    // DEBUG: Log specific ID to verify
+                    if (id === '553') {
+                        console.log(`✅ FOUND IMAGE FOR ID 553: ${imgUrl.substring(0, 30)}...`);
+                        console.log(`   - Name EN: ${nameEN}`);
+                        console.log(`   - Name KH: ${nameKH}`);
+                    }
+                }
             });
 
             const staffList = mainRows.map((r, i) => {
-                const nameEN = r[4];
+                const nameEN = r[4]; 
+                const nameKH = r[3]; 
+                
                 if (!nameEN) return null;
-                const scan = scanMap[nameEN.trim().toUpperCase()];
+                const scan = scanMap[safeKey(nameEN)];
                 if (!scan) return null;
+
+                const rawID = scan.id || r[1];
+                const finalID = rawID ? String(rawID).trim() : null;
+                
+                // Try finding image via ID Map first, then Name Map
+                let finalImg = '';
+                if (finalID && idMap[finalID]) finalImg = idMap[finalID];
+                else if (nameKH && nameMap[safeKey(nameKH)]) finalImg = nameMap[safeKey(nameKH)];
+                else finalImg = getDirectImageLink(imgRows[i]?.[0]);
+
                 return {
-                    id: scan.id || r[1],
+                    id: finalID,
                     name_en: nameEN,
+                    name_kh: nameKH || nameEN,
                     group: scan.group || r[26] || 'Staff',
-                    image: getDirectImageLink(imgRows[i]?.[0]),
+                    image: finalImg,
                     training_place: r[24] || ''
                 };
             }).filter(Boolean);
@@ -168,12 +212,16 @@ async function getCachedStaffData(sheets) {
             STAFF_CACHE = {
                 data: staffList,
                 imageMap: imageMap,
+                idMap: idMap,
+                nameMap: nameMap,
                 timestamp: Date.now(),
                 duration: 5 * 60 * 1000
             };
+            console.log("✅ Staff Cache Rebuilt Successfully.");
             return STAFF_CACHE;
+
         } catch (e) {
-            console.error("Staff fetch failed", e);
+            console.error("❌ Staff fetch failed:", e);
             throw e;
         } finally {
             fetchStaffPromise = null;
@@ -257,11 +305,10 @@ app.get('/report', async (req, res) => {
         const mode = req.query.mode || 'daily';
         const filter = req.query.filter; 
 
-        // 1. USE CACHE (Critical for Speed/Quota)
+        // Ensure cache is populated
         const staffCache = await getCachedStaffData(sheets);
         const allSheetNames = await getCachedSheetsMeta(sheets);
         
-        // 2. Select Sheets
         let targetSheets = [];
         if (filter) {
             if (mode === 'daily') {
@@ -275,7 +322,6 @@ app.get('/report', async (req, res) => {
             if (allSheetNames.includes(today)) targetSheets.push(today);
         }
 
-        // 3. BATCH FETCH (The Fix)
         const sheetChunks = chunkArray(targetSheets, 50); 
         let allRecords = [];
 
@@ -287,23 +333,33 @@ app.get('/report', async (req, res) => {
                     spreadsheetId: WRITE_SPREADSHEET_ID,
                     ranges: ranges
                 });
-                await sleep(150); // Throttle
+                await sleep(150); 
 
                 const valueRanges = batchRes.data.valueRanges || [];
                 valueRanges.forEach((rangeData) => {
                     const rows = rangeData.values || [];
                     if (rows.length > 0) {
-                        const parsed = rows.map(row => ({
-                            id: row[0],
-                            name: row[1],
-                            group: row[2],
-                            timeOut: row[3],
-                            timeIn: row[4],
-                            area: row[5],
-                            date: row[6],
-                            overtime: row[7] || "0",
-                            image: staffCache.imageMap[row[1] ? row[1].trim().toUpperCase() : ''] || ''
-                        }));
+                        const parsed = rows.map(row => {
+                            const id = row[0] ? String(row[0]).trim() : null;
+                            const name = row[1] ? String(row[1]).trim() : null;
+                            
+                            // [FIX] Priority: ID > Name (Khmer or English)
+                            let imgUrl = '';
+                            if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
+                            else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
+
+                            return {
+                                id: id,
+                                name: name,
+                                group: row[2],
+                                timeOut: row[3],
+                                timeIn: row[4],
+                                area: row[5],
+                                date: row[6],
+                                overtime: row[7] || "0",
+                                image: imgUrl
+                            };
+                        });
                         allRecords.push(...parsed);
                     }
                 });
@@ -339,14 +395,41 @@ app.get('/active-breaks', async (req, res) => {
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
+        
+        const staffCache = await getCachedStaffData(sheets);
         const sheet = await ensureTodaySheet(sheets);
+
         const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H` });
         const rows = r.data.values || [];
-        const active = rows.slice(1).map((r, i) => ({
-            rowIndex: i + 2, id: r[0], name: r[1], group: r[2], timeOut: r[3], timeIn: r[4], area: r[5]
-        })).filter(r => !r.timeIn); 
+        
+        const active = rows.slice(1)
+            .map((r, i) => {
+                const id = r[0] ? String(r[0]).trim() : null;
+                const name = r[1];
+                
+                // [FIX] Priority: ID > Name
+                let imgUrl = '';
+                if(id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
+                else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
+
+                return {
+                    rowIndex: i + 2,
+                    id: id,
+                    name: name,
+                    group: r[2],
+                    timeOut: r[3],
+                    timeIn: r[4],
+                    area: r[5],
+                    image: imgUrl 
+                };
+            })
+            .filter(r => !r.timeIn); 
+
         res.json(active);
-    } catch (e) { res.json([]); }
+    } catch (e) {
+        console.error(e);
+        res.json([]);
+    }
 });
 
 app.post('/break', async (req, res) => {
@@ -357,7 +440,8 @@ app.post('/break', async (req, res) => {
         const sheet = await ensureTodaySheet(sheets);
         const timeStr = getCurrentTimeString();
         const dateStr = getTodaySheetName();
-        const values = [[id, name, group, timeStr, '', area, dateStr, '']];
+        const cleanId = String(id).trim();
+        const values = [[cleanId, name, group, timeStr, '', area, dateStr, '']];
         await sheets.spreadsheets.values.append({
             spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H`, valueInputOption: 'USER_ENTERED', resource: { values }
         });
@@ -374,8 +458,12 @@ app.post('/timein', async (req, res) => {
         const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H` });
         const rows = r.data.values;
         let rowIndex = -1, outTime = '';
+        
+        const targetId = String(id).trim();
+
         for (let i = rows.length - 1; i >= 1; i--) {
-            if (rows[i][0] == id && !rows[i][4]) {
+            const rowId = rows[i][0] ? String(rows[i][0]).trim() : '';
+            if (rowId == targetId && !rows[i][4]) {
                 rowIndex = i + 1; outTime = rows[i][3]; break;
             }
         }
@@ -397,5 +485,18 @@ app.post('/timein', async (req, res) => {
         res.json({ status: 'success', timeIn: timeInStr });
     } catch (err) { res.status(500).json({ status: 'error' }); }
 });
+
+// --- NEW LOGIN ROUTE ---
+app.post('/login', (req, res) => {
+    const { email, password } = req.body;
+
+    // Simple strict comparison against .env variables
+    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
+        res.json({ success: true, token: 'admin_token_authorized' });
+    } else {
+        res.status(401).json({ success: false, message: 'Invalid Credentials' });
+    }
+});
+// -----------------------
 
 app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port http://localhost:${PORT}`));
