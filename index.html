@@ -197,6 +197,7 @@
 
         async function loadData() {
             try {
+                // Point to your local server
                 const res = await fetch('https://attendance-break-di.onrender.com/staff');
                 allStaff = await res.json();
                 document.getElementById('loader-initial').innerHTML = '<span class="text-green-500 font-bold flex items-center gap-2"><i data-lucide="check-circle" class="w-3 h-3"></i> Ready</span>';
@@ -271,18 +272,45 @@
                 conActive.classList.remove('hidden');
                 
                 fetchActiveBreaks(); 
-                timerInterval = setInterval(() => renderActiveBreaks(activeBreaks), 60000);
+                timerInterval = setInterval(() => renderActiveBreaks(activeBreaks), 10000); // Check every 10 secs
             }
         }
 
+        // --- NEW ROBUST TIME CALCULATION ---
         function getMinutesDiff(timeStr) {
-            const [time, modifier] = timeStr.split(' ');
-            let [hours, minutes] = time.split(':');
-            if (hours === '12') hours = '00';
-            if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+            if (!timeStr) return 0;
+
+            // 1. Regex to safely extract HH, MM, and AM/PM
+            const parts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+            if (!parts) return 0; // Return 0 if format is wrong
+
+            let hours = parseInt(parts[1], 10);
+            const minutes = parseInt(parts[2], 10);
+            const modifier = parts[3].toUpperCase();
+
+            // 2. Convert to 24 Hour format
+            if (hours === 12) {
+                hours = modifier === 'PM' ? 12 : 0;
+            } else {
+                hours = modifier === 'PM' ? hours + 12 : hours;
+            }
+
+            // 3. Create Date Objects
+            const now = new Date();
             const breakDate = new Date();
-            breakDate.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0);
-            return Math.floor((new Date() - breakDate) / 60000);
+            breakDate.setHours(hours, minutes, 0, 0);
+
+            // 4. Handle "Yesterday" case
+            // If break time is in the future relative to 'now', it means it happened yesterday
+            if (breakDate > now) {
+                breakDate.setDate(breakDate.getDate() - 1);
+            }
+
+            // 5. Calculate Difference
+            const diffMs = now - breakDate;
+            const diffMins = Math.floor(diffMs / 1000 / 60);
+
+            return diffMins > 0 ? diffMins : 0;
         }
 
         function renderActiveBreaks(list) {
@@ -304,7 +332,9 @@
                 const staffInfo = allStaff.find(s => s.id == item.id);
                 const imgUrl = staffInfo ? staffInfo.image : `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(item.name)}`;
 
+                // Use the new robust function
                 const minsGone = getMinutesDiff(item.timeOut);
+                
                 const isOvertime = minsGone > 15;
                 const overtimeAmount = minsGone - 15;
 
@@ -350,9 +380,7 @@
             document.getElementById('itemCount').innerText = list.length;
             
             list.forEach((person, index) => {
-                // Determine which ID to show (DI ID if available, else Main ID)
                 const displayId = person.id_di || person.id || '...';
-                // Determine which Group to show (DI Group if available)
                 const displayGroup = person.group_di || person.group || 'Staff';
 
                 const imgUrl = person.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(person.name_en)}`;
@@ -387,9 +415,7 @@
 
         function confirmStartBreak(person) {
             const color = currentArea === 'A' ? '#3b82f6' : '#f43f5e';
-            // Use DI Group if available for the record
             const recordGroup = person.group_di || person.group;
-            // Use DI ID if available
             const recordId = person.id_di || person.id;
 
             Modal.fire({
@@ -409,7 +435,6 @@
                 confirmButtonColor: color,
                 background: '#fff',
             }).then((result) => {
-                // Pass the correct ID and Group to submitBreak
                 if (result.isConfirmed) submitBreak(person, recordId, recordGroup);
             });
         }
