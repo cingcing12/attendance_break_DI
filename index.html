@@ -199,12 +199,11 @@
     <script>
         const API_URL = "https://attendance-break-di.onrender.com";
 
-        // --- GLOBAL STATE ---
         let allStaff = [];
         let activeBreaks = [];
         let currentArea = null;
         let currentTab = 'staff';
-        let pollingTimer = null; 
+        let refreshTimer = null; 
         let minuteTimer = null;
 
         const Toast = Swal.mixin({
@@ -224,23 +223,18 @@
         // --- DATA LOADING ---
         async function loadData() {
             try {
-                // Initial Load (With Animation)
                 await fetchData(true);
                 document.getElementById('loader-initial').innerHTML = '<span class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="wifi" class="w-3 h-3"></i> Online</span>';
                 lucide.createIcons();
-                
-                // Real-Time Polling (Background - No Animation)
-                pollingTimer = setInterval(() => fetchData(false), 2000); 
-
-                // Local Minute Update (Every 5 seconds - updates numbers purely visually)
+                // Short poll interval for responsiveness
+                refreshTimer = setInterval(() => fetchData(false), 2000); 
+                // Local timer for minutes elapsed
                 minuteTimer = setInterval(() => updateTimeDisplays(), 5000);
-
             } catch (err) {
                 document.getElementById('loader-initial').innerHTML = '<span class="text-rose-500 font-bold">Offline</span>';
             }
         }
 
-        // Fetch Data: isBackground = true means NO animation
         async function fetchData(isInitial = false) {
             try {
                 const [resStaff, resBreaks] = await Promise.all([
@@ -251,11 +245,10 @@
                 const newStaff = await resStaff.json();
                 const newBreaks = await resBreaks.json();
 
-                // Simple check to prevent unnecessary DOM manipulation if nothing changed
                 if(JSON.stringify(newBreaks) !== JSON.stringify(activeBreaks) || isInitial) {
                     allStaff = newStaff;
                     activeBreaks = newBreaks;
-                    updateUI(!isInitial); // Pass true to Disable Animation if it's a background update
+                    updateUI(!isInitial);
                 }
             } catch (e) { console.error("Poll Error", e); }
         }
@@ -273,14 +266,17 @@
             }
         }
 
-        // --- SMART RENDER (DIFFING) ---
-        
+        // --- RENDER ACTIVE BREAKS (Filtered by Zone) ---
         function renderActiveBreaks(list, disableAnimation) {
             const grid = document.getElementById('activeGrid');
             const emptyMsg = document.getElementById('no-active');
             
-            // [FIXED] Show all active breaks, do NOT filter by area
-            const filteredList = list; 
+            // [FIX] Strict filtering by Zone
+            const filteredList = list.filter(item => {
+                // Ensure data types match and handle potential nulls
+                return String(item.area).trim() === String(currentArea).trim();
+            }); 
+            
             document.getElementById('itemCount').innerText = filteredList.length;
 
             if (filteredList.length === 0) {
@@ -291,17 +287,12 @@
                 emptyMsg.classList.add('hidden');
             }
 
-            // 1. Mark existing cards
+            // Clean up old cards
             const currentIds = new Set(filteredList.map(i => i.id));
-            
-            // 2. Remove old cards
             Array.from(grid.children).forEach(card => {
-                if (!currentIds.has(card.dataset.id)) {
-                    card.remove();
-                }
+                if (!currentIds.has(card.dataset.id)) card.remove();
             });
 
-            // 3. Update or Create
             filteredList.forEach((item) => {
                 const existingCard = document.getElementById(`break-card-${item.id}`);
                 const staffInfo = allStaff.find(s => s.id == item.id);
@@ -310,21 +301,14 @@
                 const isOvertime = minsGone > 15;
                 const overtimeAmount = minsGone - 15;
 
-                // Prepare Visual States
                 const borderClass = isOvertime ? "border-rose-500/50 shadow-rose-900/20 shadow-lg animate-pulse-glow bg-rose-900/10" : "border-white/10";
                 const timeColor = isOvertime ? "text-rose-400" : "text-slate-200";
                 const statusHtml = isOvertime
                     ? `<span class="absolute top-2 right-2 bg-rose-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">+${overtimeAmount}m</span>`
                     : `<span class="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">OK</span>`;
-                
-                // Show area badge if it differs from current view area
-                const areaBadge = (item.area !== currentArea) 
-                    ? `<span class="absolute top-2 left-2 bg-slate-700 text-slate-300 text-[10px] font-bold px-2 py-0.5 rounded border border-white/10">ZONE ${item.area || '?'}</span>` 
-                    : '';
 
                 if (existingCard) {
-                    // --- SMART UPDATE (No Flicker) ---
-                    // Only update inner parts if they changed
+                    // Instant Update
                     const timeEl = document.getElementById(`time-val-${item.id}`);
                     const badgeContainer = document.getElementById(`badge-container-${item.id}`);
                     
@@ -333,21 +317,18 @@
                         timeEl.className = `text-xl font-black ${timeColor} leading-none my-0.5`;
                     }
                     if(badgeContainer) badgeContainer.innerHTML = statusHtml;
-                    
-                    // Update Border state
                     existingCard.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass}`;
 
                 } else {
-                    // --- CREATE NEW ---
+                    // Create New
                     const card = document.createElement('div');
                     card.id = `break-card-${item.id}`;
                     card.dataset.id = item.id;
-                    card.dataset.timeout = item.timeOut; // Store for local timer
+                    card.dataset.timeout = item.timeOut;
                     let anim = disableAnimation ? "" : "animate-fade-in-up";
                     card.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass} ${anim}`;
                     
                     card.innerHTML = `
-                        ${areaBadge}
                         <div id="badge-container-${item.id}">${statusHtml}</div>
                         <img src="${imgUrl}" class="w-14 h-14 rounded-full object-cover mb-2 shadow-lg border-2 border-white/10 bg-slate-800 mt-4">
                         <h3 class="font-bold text-white text-sm mb-0.5 leading-tight truncate w-full">${item.name}</h3>
@@ -368,7 +349,7 @@
             if(!disableAnimation) lucide.createIcons();
         }
 
-        // --- CLIENT SIDE TIMER (Updates numbers only) ---
+        // --- CLIENT SIDE TIMER ---
         function updateTimeDisplays() {
             if (currentTab !== 'active') return;
             const cards = document.querySelectorAll('[id^="break-card-"]');
@@ -383,14 +364,12 @@
                 const overtimeAmount = minsGone - 15;
                 const timeColor = isOvertime ? "text-rose-400" : "text-slate-200";
                 
-                // Update Number
                 const timeEl = document.getElementById(`time-val-${id}`);
                 if (timeEl) {
                     timeEl.innerHTML = `${minsGone}<span class="text-xs font-bold text-slate-500 ml-0.5">min</span>`;
                     timeEl.className = `text-xl font-black ${timeColor} leading-none my-0.5`;
                 }
 
-                // Update Badge if state changed
                 const badgeContainer = document.getElementById(`badge-container-${id}`);
                 if(badgeContainer) {
                     const statusHtml = isOvertime
@@ -399,12 +378,12 @@
                     badgeContainer.innerHTML = statusHtml;
                 }
 
-                // Update Border
                 const borderClass = isOvertime ? "border-rose-500/50 shadow-rose-900/20 shadow-lg animate-pulse-glow bg-rose-900/10" : "border-white/10";
                 card.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass}`;
             });
         }
 
+        // --- RENDER STAFF ---
         function renderStaff(list, disableAnimation) {
             const grid = document.getElementById('staffGrid');
             const placeholder = document.getElementById('staff-placeholder');
@@ -463,7 +442,7 @@
             lucide.createIcons();
         }
 
-        // --- TIME CALC ---
+        // --- UTILS ---
         function getMinutesDiff(timeStr) {
             if (!timeStr) return 0;
             const parts = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
@@ -481,7 +460,6 @@
             return diffMins > 0 ? diffMins : 0;
         }
 
-        // --- NAVIGATION ---
         function switchTab(tab) {
             currentTab = tab;
             const tabStaff = document.getElementById('tab-staff');
@@ -507,7 +485,6 @@
                 tabActive.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
                 conStaff.classList.add('hidden');
                 conActive.classList.remove('hidden');
-                
                 searchBar.value = ''; 
                 fetchData(true); 
             }
@@ -573,24 +550,19 @@
         }
 
         function confirmTimeIn(id, name, isOvertime, amount) {
-            let htmlMsg = `<p class="text-lg">Welcome back, <b>${name}</b></p>`;
-            if(isOvertime) htmlMsg += `<div class="mt-3 bg-rose-900/30 border border-rose-500/50 p-2 rounded-lg text-rose-400 text-sm font-bold flex items-center justify-center gap-2"><i data-lucide="alert-triangle" class="w-4 h-4"></i> Overtime: ${amount}m</div>`;
-            
-            Swal.fire({
-                title: 'End Break?',
-                html: htmlMsg,
-                showCancelButton: true,
-                confirmButtonText: 'Clock In',
-                confirmButtonColor: '#10b981',
-                background: '#1e293b',
-                didOpen: () => lucide.createIcons()
-            }).then((result) => {
-                if (result.isConfirmed) submitTimeIn(id);
-            });
+            // Optimistic UI: Remove card immediately
+            const card = document.getElementById(`break-card-${id}`);
+            if(card) {
+                card.style.transform = 'scale(0.9) translateY(20px)';
+                card.style.opacity = '0';
+                setTimeout(() => card.remove(), 300);
+            }
+
+            // Actual Request
+            submitTimeIn(id, name);
         }
 
-        async function submitTimeIn(id) {
-            Swal.fire({ title: '', html: '<i data-lucide="loader-2" class="w-10 h-10 animate-spin text-emerald-500"></i>', showConfirmButton: false, background: 'transparent', didOpen: () => lucide.createIcons() });
+        async function submitTimeIn(id, name) {
             try {
                 const res = await fetch(`${API_URL}/timein`, {
                     method: 'POST',
@@ -598,14 +570,15 @@
                     body: JSON.stringify({ id: id })
                 });
                 if(res.ok) {
-                    await fetchData(true);
-                    Swal.close();
-                    Toast.fire({ icon: 'success', title: 'Clocked In' });
+                    await fetchData(true); // Sync with server
+                    Toast.fire({ icon: 'success', title: `Welcome back, ${name}` });
                 }
-            } catch (e) { Swal.fire('Error', 'Connection Failed', 'error'); }
+            } catch (e) { 
+                Swal.fire('Error', 'Connection Failed', 'error'); 
+                fetchData(true); // Revert UI on error
+            }
         }
 
-        // --- SEARCH LISTENER ---
         document.getElementById('searchBar').addEventListener('input', (e) => {
             const term = e.target.value.toLowerCase();
             const placeholder = document.getElementById('staff-placeholder');
