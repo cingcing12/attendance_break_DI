@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Analytics Dashboard Ultra</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: { 
+                        sans: ['"Inter"', 'sans-serif'],
+                        mono: ['"JetBrains Mono"', 'monospace'] 
+                    },
+                    colors: { 
+                        dark: "#050505",
+                        card: "#121212",
+                        primary: "#6366f1", 
+                    },
+                    animation: {
+                        'enter': 'enter 0.3s ease-out forwards',
+                    },
+                    keyframes: {
+                        enter: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { background-color: #000; color: #e5e5e5; -webkit-tap-highlight-color: transparent; }
+        
+        .bg-glow {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; pointer-events: none;
+            background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15), transparent 40%);
+        }
+
+        .glass-nav {
+            background: rgba(10, 10, 10, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            z-index: 40;
+        }
+
+        .glass-card {
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        /* BLOCKING OVERLAY */
+        #loading-overlay {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(12px);
+            z-index: 9999;
+        }
+
+        .timeline-line::before {
+            content: ''; position: absolute; top: 12px; bottom: -12px; left: 5px; width: 2px; background: #27272a; z-index: 0;
+        }
+        .timeline-item:last-child .timeline-line::before { display: none; }
+
+        .tab-btn.active {
+            background-color: #6366f1;
+            color: white;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col pb-12">
+
+    <div class="bg-glow"></div>
+
+    <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center hidden transition-opacity duration-300">
+        <div class="relative w-20 h-20 mb-4">
+            <div class="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            <div class="absolute inset-4 bg-indigo-500/20 rounded-full animate-pulse"></div>
+        </div>
+        <h3 class="text-white font-bold text-lg tracking-widest">LOADING DATA</h3>
+        <p class="text-slate-400 text-sm mt-1">Please wait...</p>
+    </div>
+
+    <nav class="glass-nav sticky top-0 transition-all duration-300">
+        <div class="max-w-7xl mx-auto px-4 md:px-6 py-4">
+            
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                        <i data-lucide="bar-chart-2" class="text-white w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h1 class="text-base font-bold text-white tracking-tight">Staff Analytics</h1>
+                        <div class="flex items-center gap-2">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            <p class="text-[10px] text-slate-400 font-mono uppercase">System Online</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-px bg-white/10 rounded-lg p-px overflow-hidden">
+                    <div class="bg-black/80 px-4 py-2 text-center">
+                        <span class="text-[10px] text-slate-500 block">STAFF</span>
+                        <span class="text-sm font-bold text-white" id="stat-total-staff">0</span>
+                    </div>
+                    <div class="bg-black/80 px-4 py-2 text-center">
+                        <span class="text-[10px] text-slate-500 block">LOGS</span>
+                        <span class="text-sm font-bold text-emerald-400" id="stat-total-breaks">0</span>
+                    </div>
+                    <div class="bg-black/80 px-4 py-2 text-center">
+                        <span class="text-[10px] text-slate-500 block">ALERTS</span>
+                        <span class="text-sm font-bold text-rose-500" id="stat-total-ot">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="flex p-1 bg-white/5 rounded-lg border border-white/5 w-full sm:w-auto">
+                    <button onclick="changeMode('daily')" id="btn-daily" class="tab-btn active flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200">Daily</button>
+                    <button onclick="changeMode('monthly')" id="btn-monthly" class="tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200">Monthly</button>
+                    <button onclick="changeMode('yearly')" id="btn-yearly" class="tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200">Yearly</button>
+                </div>
+
+                <div class="relative flex-grow">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i data-lucide="calendar" class="h-4 w-4 text-slate-500"></i>
+                    </div>
+                    <select id="dateFilter" onchange="fetchReport()" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-8 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none appearance-none transition-all">
+                        <option>Loading...</option>
+                    </select>
+                </div>
+
+                <div class="relative flex-grow-[2]">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <i data-lucide="search" class="h-4 w-4 text-slate-500"></i>
+                    </div>
+                    <input type="text" id="searchInput" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-4 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none placeholder-slate-600 transition-all" placeholder="Search staff...">
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto w-full px-4 md:px-6 mt-8">
+        
+        <div class="flex items-end justify-between mb-6">
+            <h2 class="text-xl font-bold text-white" id="view-title">Activity Feed</h2>
+        </div>
+
+        <div id="view-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-enter"></div>
+
+        <div id="view-table" class="hidden animate-enter">
+            <div class="glass-card rounded-xl overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-sm text-slate-400">
+                        <thead class="bg-white/5 text-xs uppercase font-bold text-slate-300">
+                            <tr>
+                                <th class="px-6 py-4">Employee</th>
+                                <th class="px-6 py-4">Group</th>
+                                <th class="px-6 py-4 text-center">Breaks</th>
+                                <th class="px-6 py-4 text-center">Overtime</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-white/5" id="table-body"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div id="empty-state" class="hidden flex-col items-center justify-center py-32 text-center">
+            <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4">
+                <i data-lucide="coffee" class="w-8 h-8 text-slate-600"></i>
+            </div>
+            <h3 class="text-white font-bold">No Data Found</h3>
+            <p class="text-slate-500 text-sm mt-1">Try selecting a different date or filter.</p>
+        </div>
+
+    </main>
+
+    <script>
+        const API_URL = "https://attendance-break-di.onrender.com"; 
+        
+        let currentMode = 'daily';
+        let availableSheets = [];
+        let fetchedData = []; 
+        let debounceTimer; 
+        
+        lucide.createIcons();
+
+        // --- APP START ---
+        async function init() {
+            try {
+                showLoading(); // BLOCK UI
+                
+                const res = await fetch(`${API_URL}/available-sheets`);
+                if (!res.ok) throw new Error('API Error');
+                availableSheets = await res.json();
+                
+                const today = new Date();
+                const day = String(today.getDate()).padStart(2, '0');
+                const month = String(today.getMonth() + 1).padStart(2, '0');
+                const year = today.getFullYear();
+                
+                populateFilter('daily', `${day}-${month}-${year}`);
+                fetchReport();
+                
+            } catch (error) {
+                console.error(error);
+                document.getElementById('view-title').innerText = "Connection Failed";
+                document.getElementById('view-title').classList.add("text-rose-500");
+                hideLoading();
+            }
+        }
+
+        // --- LOADING OVERLAY LOGIC ---
+        function showLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.classList.remove('hidden');
+            // Force redraw/opacity for transition if needed, 
+            // but simple display toggle is safer for blocking
+        }
+
+        function hideLoading() {
+            const overlay = document.getElementById('loading-overlay');
+            overlay.classList.add('hidden');
+        }
+
+        // --- FILTER LOGIC ---
+        function populateFilter(mode, defaultVal = '') {
+            const select = document.getElementById('dateFilter');
+            select.innerHTML = '';
+            let options = [];
+            
+            if (mode === 'daily') options = [...availableSheets].reverse(); 
+            else if (mode === 'monthly') options = Array.from(new Set(availableSheets.map(s => s.substring(3))));
+            else if (mode === 'yearly') options = Array.from(new Set(availableSheets.map(s => s.substring(6))));
+
+            if(options.length === 0) {
+                const el = document.createElement('option');
+                el.innerText = "No Data";
+                select.appendChild(el);
+            } else {
+                options.forEach(opt => {
+                    const el = document.createElement('option');
+                    el.value = opt;
+                    el.innerText = opt;
+                    if(opt === defaultVal) el.selected = true;
+                    select.appendChild(el);
+                });
+                if(!options.includes(defaultVal) && select.options.length > 0) select.selectedIndex = 0;
+            }
+        }
+
+        function changeMode(mode) {
+            currentMode = mode;
+            
+            // UI Toggle
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.className = "tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200");
+            document.getElementById(`btn-${mode}`).className = "tab-btn active flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold transition-all duration-200";
+
+            // Context logic
+            const currentVal = document.getElementById('dateFilter').value;
+            let nextVal = '';
+            if(currentVal && currentVal !== "No Data") {
+                if (mode === 'monthly' && currentVal.length === 10) nextVal = currentVal.substring(3);
+                if (mode === 'yearly') nextVal = currentVal.substring(currentVal.length - 4);
+            }
+
+            populateFilter(mode, nextVal);
+            fetchReport();
+        }
+
+        // --- CORE DATA FETCHING ---
+        async function fetchReport() {
+            const filterVal = document.getElementById('dateFilter').value;
+            
+            showLoading(); // SHOW BLOCKING OVERLAY
+
+            if(!filterVal || filterVal === "No Data") {
+                 updateStats([]);
+                 renderView();
+                 hideLoading();
+                 return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/report?mode=${currentMode}&filter=${filterVal}`);
+                if (res.status === 429) {
+                     alert("System busy. Please wait a moment.");
+                     hideLoading();
+                     return;
+                }
+                const data = await res.json();
+                fetchedData = data.raw;
+                
+                updateStats(fetchedData);
+                renderView();
+            } catch (e) {
+                console.error(e);
+                alert("Failed to load data");
+            } finally {
+                hideLoading(); // HIDE BLOCKING OVERLAY
+            }
+        }
+
+        function updateStats(data) {
+            const uniqueStaff = new Set(data.map(item => item.id)).size;
+            const otCount = data.filter(item => item.overtime && item.overtime !== "0").length;
+            const filterTxt = document.getElementById('dateFilter').value;
+
+            document.getElementById('stat-total-staff').innerText = uniqueStaff;
+            document.getElementById('stat-total-breaks').innerText = data.length;
+            document.getElementById('stat-total-ot').innerText = otCount;
+            document.getElementById('view-title').innerText = `${currentMode === 'daily' ? 'Daily' : currentMode === 'monthly' ? 'Monthly' : 'Yearly'}: ${filterTxt}`;
+        }
+
+        function renderView() {
+            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = fetchedData.filter(item => 
+                item.name.toLowerCase().includes(searchTerm) || 
+                item.id.toString().includes(searchTerm)
+            );
+
+            const viewGrid = document.getElementById('view-grid');
+            const viewTable = document.getElementById('view-table');
+            const emptyState = document.getElementById('empty-state');
+
+            // Logic to determine view
+            viewGrid.classList.add('hidden');
+            viewTable.classList.add('hidden');
+            emptyState.classList.add('hidden');
+
+            if(filtered.length === 0) {
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            if (currentMode === 'daily') {
+                viewGrid.classList.remove('hidden');
+                renderGrid(filtered);
+            } else {
+                viewTable.classList.remove('hidden');
+                renderTable(filtered);
+            }
+        }
+
+        function renderGrid(data) {
+            const container = document.getElementById('view-grid');
+            container.innerHTML = '';
+
+            const userGroups = {};
+            data.forEach(log => {
+                if(!userGroups[log.id]) userGroups[log.id] = { ...log, breaks: [] };
+                userGroups[log.id].breaks.push(log);
+            });
+
+            const sortedUsers = Object.values(userGroups).sort((a,b) => {
+                 const aActive = !a.breaks[a.breaks.length-1].timeIn;
+                 const bActive = !b.breaks[b.breaks.length-1].timeIn;
+                 return bActive - aActive;
+            });
+
+            sortedUsers.forEach(user => {
+                const imgUrl = user.image || `https://ui-avatars.com/api/?background=random&color=fff&background=6366f1&name=${encodeURIComponent(user.name)}`;
+                const lastBreak = user.breaks[user.breaks.length - 1];
+                const isActive = !lastBreak.timeIn;
+                
+                const borderClass = isActive ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)]' : 'border-white/5 hover:border-white/10';
+                const statusDot = isActive ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#141414] animate-pulse"></div>' : '';
+                
+                const timelineHtml = user.breaks.map(b => `
+                    <div class="timeline-item relative pl-4 pb-3 last:pb-0">
+                        <div class="timeline-line absolute left-[4.5px] top-[6px] bottom-0 w-[1px] bg-white/10"></div>
+                        <div class="absolute left-0 top-[6px] w-2.5 h-2.5 rounded-full border-2 border-[#171717] ${!b.timeIn ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]' : 'bg-slate-700'}"></div>
+                        
+                        <div class="flex justify-between items-start text-xs">
+                            <div class="flex flex-col">
+                                <span class="text-slate-300 font-mono">${b.timeOut}</span>
+                                ${!b.timeIn ? '<span class="text-[10px] text-indigo-400 font-bold mt-0.5 tracking-wider">ACTIVE</span>' : ''}
+                            </div>
+                            <div class="text-right">
+                                <span class="text-slate-500 font-mono">${b.timeIn || '...'}</span>
+                                ${(b.overtime && b.overtime !== '0') ? `<div class="text-[10px] text-rose-500 font-bold mt-0.5">+${b.overtime} OT</div>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+
+                const card = document.createElement('div');
+                card.className = `glass-card p-4 rounded-xl border ${borderClass} transition-all duration-300`;
+                card.innerHTML = `
+                    <div class="flex items-center gap-3 mb-4">
+                        <div class="relative">
+                            <img src="${imgUrl}" class="w-12 h-12 rounded-full object-cover bg-slate-800 border border-white/10">
+                            ${statusDot}
+                        </div>
+                        <div class="overflow-hidden">
+                            <h4 class="text-white font-bold text-sm truncate">${user.name}</h4>
+                            <p class="text-slate-500 text-xs truncate">#${user.id} • ${user.group}</p>
+                        </div>
+                    </div>
+                    <div class="bg-black/30 rounded-lg p-3 border border-white/5">
+                        ${timelineHtml}
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            const aggregation = {};
+            data.forEach(log => {
+                if(!aggregation[log.id]) aggregation[log.id] = { ...log, breakCount: 0, otCount: 0 };
+                aggregation[log.id].breakCount++;
+                if(log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
+            });
+
+            const sorted = Object.values(aggregation).sort((a,b) => b.breakCount - a.breakCount);
+
+            sorted.forEach(user => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition-colors group";
+                
+                const imgUrl = user.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(user.name)}`;
+                const otDisplay = user.otCount > 0 
+                    ? `<span class="inline-flex items-center px-2 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-bold">${user.otCount} Alerts</span>` 
+                    : `<span class="text-slate-600 text-xs">-</span>`;
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-3">
+                            <img src="${imgUrl}" class="w-8 h-8 rounded-full bg-slate-800 object-cover">
+                            <div>
+                                <div class="font-bold text-white text-sm">${user.name}</div>
+                                <div class="text-xs text-slate-500">#${user.id}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4"><span class="px-2 py-1 rounded bg-white/5 text-slate-400 text-xs border border-white/5">${user.group}</span></td>
+                    <td class="px-6 py-4 text-center"><span class="font-mono text-white text-sm">${user.breakCount}</span></td>
+                    <td class="px-6 py-4 text-center">${otDisplay}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                renderView();
+            }, 300);
+        });
+
+        init();
+    </script>
+</body>
+</html>
