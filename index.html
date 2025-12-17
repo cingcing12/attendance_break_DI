@@ -199,6 +199,7 @@
     <script>
         const API_URL = "https://attendance-break-di.onrender.com";
 
+        // --- GLOBAL STATE ---
         let allStaff = [];
         let activeBreaks = [];
         let currentArea = null;
@@ -226,9 +227,7 @@
                 await fetchData(true);
                 document.getElementById('loader-initial').innerHTML = '<span class="text-emerald-400 font-bold flex items-center gap-2"><i data-lucide="wifi" class="w-3 h-3"></i> Online</span>';
                 lucide.createIcons();
-                // Short poll interval for responsiveness
                 refreshTimer = setInterval(() => fetchData(false), 2000); 
-                // Local timer for minutes elapsed
                 minuteTimer = setInterval(() => updateTimeDisplays(), 5000);
             } catch (err) {
                 document.getElementById('loader-initial').innerHTML = '<span class="text-rose-500 font-bold">Offline</span>';
@@ -253,7 +252,6 @@
             } catch (e) { console.error("Poll Error", e); }
         }
 
-        // --- UI UPDATER ---
         function updateUI(disableAnimation = false) {
             if (currentTab === 'active') {
                 renderActiveBreaks(activeBreaks, disableAnimation);
@@ -266,16 +264,13 @@
             }
         }
 
-        // --- RENDER ACTIVE BREAKS (Filtered by Zone) ---
+        // --- RENDER ACTIVE BREAKS (Strictly Filtered) ---
         function renderActiveBreaks(list, disableAnimation) {
             const grid = document.getElementById('activeGrid');
             const emptyMsg = document.getElementById('no-active');
             
-            // [FIX] Strict filtering by Zone
-            const filteredList = list.filter(item => {
-                // Ensure data types match and handle potential nulls
-                return String(item.area).trim() === String(currentArea).trim();
-            }); 
+            // [CRITICAL FIX] Strict Zone Filtering
+            const filteredList = list.filter(item => String(item.area).trim() === String(currentArea).trim());
             
             document.getElementById('itemCount').innerText = filteredList.length;
 
@@ -287,7 +282,7 @@
                 emptyMsg.classList.add('hidden');
             }
 
-            // Clean up old cards
+            // Remove items not in filtered list
             const currentIds = new Set(filteredList.map(i => i.id));
             Array.from(grid.children).forEach(card => {
                 if (!currentIds.has(card.dataset.id)) card.remove();
@@ -308,7 +303,6 @@
                     : `<span class="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-sm">OK</span>`;
 
                 if (existingCard) {
-                    // Instant Update
                     const timeEl = document.getElementById(`time-val-${item.id}`);
                     const badgeContainer = document.getElementById(`badge-container-${item.id}`);
                     
@@ -320,11 +314,10 @@
                     existingCard.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass}`;
 
                 } else {
-                    // Create New
                     const card = document.createElement('div');
                     card.id = `break-card-${item.id}`;
                     card.dataset.id = item.id;
-                    card.dataset.timeout = item.timeOut;
+                    card.dataset.timeout = item.timeOut; 
                     let anim = disableAnimation ? "" : "animate-fade-in-up";
                     card.className = `glass-card rounded-2xl p-3 flex flex-col items-center text-center relative transition-all border ${borderClass} ${anim}`;
                     
@@ -485,6 +478,7 @@
                 tabActive.className = "active-tab flex-1 py-2 rounded-lg text-xs font-bold transition-all shadow-sm flex justify-center items-center gap-2";
                 conStaff.classList.add('hidden');
                 conActive.classList.remove('hidden');
+                
                 searchBar.value = ''; 
                 fetchData(true); 
             }
@@ -495,6 +489,10 @@
             currentArea = area;
             document.getElementById('displayArea').innerText = `ZONE ${area}`;
             
+            // CLEAR GRIDS TO PREVENT FLASHING
+            document.getElementById('activeGrid').innerHTML = '';
+            document.getElementById('staffGrid').innerHTML = '';
+
             const selection = document.getElementById('view-selection');
             selection.classList.add('opacity-0', 'scale-95', 'transition-all', 'duration-500');
             setTimeout(() => {
@@ -508,6 +506,10 @@
 
         function goBack() {
             currentArea = null;
+            // Clear grids on exit
+            document.getElementById('activeGrid').innerHTML = '';
+            document.getElementById('staffGrid').innerHTML = '';
+            
             document.getElementById('view-dashboard').classList.add('hidden');
             document.getElementById('view-dashboard').classList.remove('flex');
             const selection = document.getElementById('view-selection');
