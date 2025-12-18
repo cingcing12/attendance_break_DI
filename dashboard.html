@@ -3,13 +3,15 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Admin Dashboard - Login</title>
+    <title>Admin Dashboard - Staff Hub</title>
+    
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Khmer:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Khmer:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
@@ -30,17 +32,11 @@
                     },
                     animation: {
                         'enter': 'enter 0.5s ease-out forwards',
-                        'pulse-fast': 'pulse 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
-                        'float': 'float 6s ease-in-out infinite',
                     },
                     keyframes: {
                         enter: {
                             '0%': { opacity: '0', transform: 'translateY(20px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
-                        },
-                        float: {
-                            '0%, 100%': { transform: 'translateY(0)' },
-                            '50%': { transform: 'translateY(-10px)' },
                         }
                     }
                 }
@@ -53,7 +49,6 @@
         .glass-nav { background: rgba(10, 10, 10, 0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.08); z-index: 40; }
         .glass-card { background: rgba(20, 20, 20, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
         
-        /* Custom SweetAlert Theme */
         div:where(.swal2-container) div:where(.swal2-popup) {
             background: rgba(20, 20, 20, 0.95) !important;
             backdrop-filter: blur(10px);
@@ -63,11 +58,34 @@
         }
         
         #loading-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px); z-index: 9999; }
-        .timeline-line::before { content: ''; position: absolute; top: 12px; bottom: -12px; left: 5px; width: 2px; background: #27272a; z-index: 0; }
-        .timeline-item:last-child .timeline-line::before { display: none; }
         .tab-btn.active { background-color: #6366f1; color: white; box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); border-color: rgba(99, 102, 241, 0.5); }
         
-        #print-container { position: absolute; top: -9999px; left: -9999px; width: 800px; background: white; color: black; padding: 40px; font-family: 'Noto Sans Khmer', sans-serif; }
+        /* PRINT STYLING - High Res Container */
+        #print-staging-area {
+            position: fixed;
+            top: 0;
+            left: -9999px;
+            z-index: -50;
+        }
+        
+        /* A4 Ratio Virtual Page (Flexbox for perfect footer alignment) */
+        .print-page {
+            width: 1200px;
+            height: 1697px; /* Exact A4 Ratio @ 1200px width */
+            background: white;
+            color: #0f172a;
+            padding: 50px;
+            box-sizing: border-box;
+            font-family: 'Noto Sans Khmer', sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between; /* Pushes Footer to Bottom */
+        }
+
+        /* Explicit Table Sizing for PDF */
+        .print-table th { font-size: 22px !important; padding: 14px; }
+        .print-table td { font-size: 18px !important; padding: 14px; }
+
         select option { background-color: #121212; color: white; }
     </style>
 </head>
@@ -91,32 +109,19 @@
             <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-5">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email</label>
-                    <div class="relative group">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i data-lucide="mail" class="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors"></i>
-                        </div>
-                        <input type="email" id="email" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 pl-10 pr-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="name@company.com" required>
-                    </div>
+                    <input type="email" id="email" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="name@company.com" required>
                 </div>
-
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Password</label>
-                    <div class="relative group">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i data-lucide="lock" class="h-5 w-5 text-slate-500 group-focus-within:text-indigo-400 transition-colors"></i>
-                        </div>
-                        <input type="password" id="password" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 pl-10 pr-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="••••••••" required>
-                    </div>
+                    <input type="password" id="password" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="••••••••" required>
                 </div>
-
-                <button type="submit" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-xl shadow-indigo-900/30 transition-all transform active:scale-95 flex items-center justify-center gap-2 group">
+                <button type="submit" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-xl shadow-indigo-900/30 transition-all flex items-center justify-center gap-2">
                     <span id="btn-text">ចូលប្រព័ន្ធ</span>
-                    <i data-lucide="arrow-right" class="w-4 h-4 group-hover:translate-x-1 transition-transform"></i>
+                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
                 </button>
             </form>
         </div>
     </div>
-
 
     <div id="dashboard-view" class="hidden flex-col min-h-screen">
         
@@ -124,13 +129,12 @@
             <div class="relative w-20 h-20 mb-4">
                 <div class="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
                 <div class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                <div class="absolute inset-4 bg-indigo-500/20 rounded-full animate-pulse"></div>
             </div>
             <h3 class="text-white font-bold text-lg tracking-widest font-khmer" id="loader-text">កំពុងផ្ទុកទិន្នន័យ</h3>
-            <p class="text-slate-400 text-sm mt-1 font-khmer">សូមរង់ចាំ...</p>
         </div>
 
-        <div id="print-container"></div>
+        <div id="print-staging-area"></div>
+
         <div id="print-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
             <div class="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl transform scale-100 transition-all ring-1 ring-white/10">
                 <div class="flex justify-between items-center mb-6">
@@ -139,24 +143,32 @@
                     </h3>
                     <button onclick="closePrintModal()" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
                 </div>
-                <div class="space-y-4">
+                
+                <div class="space-y-5">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ប្រភេទរបាយការណ៍</label>
                         <div class="grid grid-cols-3 gap-2">
-                            <button onclick="setPrintMode('daily')" id="pm-daily" class="print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold border border-transparent shadow-lg shadow-indigo-500/20 font-khmer">ប្រចាំថ្ងៃ</button>
-                            <button onclick="setPrintMode('monthly')" id="pm-monthly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10 font-khmer">ប្រចាំខែ</button>
-                            <button onclick="setPrintMode('yearly')" id="pm-yearly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10 font-khmer">ប្រចាំឆ្នាំ</button>
+                            <button onclick="setPrintMode('daily')" id="pm-daily" class="print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំថ្ងៃ</button>
+                            <button onclick="setPrintMode('monthly')" id="pm-monthly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំខែ</button>
+                            <button onclick="setPrintMode('yearly')" id="pm-yearly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំឆ្នាំ</button>
                         </div>
                     </div>
+
                     <div>
                         <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ជ្រើសរើសកាលបរិច្ឆេទ</label>
-                        <div class="relative">
-                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i data-lucide="calendar-days" class="w-4 h-4 text-slate-400"></i></div>
-                            <select id="print-range-select" class="w-full bg-white/5 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-10 p-3 appearance-none transition-all font-mono"></select>
-                            <div class="absolute inset-y-0 right-0 flex items-center px-3 pointer-events-none text-slate-500"><i data-lucide="chevron-down" class="w-4 h-4"></i></div>
+                        <select id="print-range-select" class="w-full bg-white/5 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-3 p-3 appearance-none transition-all font-mono"></select>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ជ្រើសរើសតំបន់ (Zone)</label>
+                        <div class="grid grid-cols-3 gap-2">
+                            <button onclick="setZoneMode('all')" id="pz-all" class="zone-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer border border-transparent shadow-lg shadow-indigo-500/20">ទាំងអស់</button>
+                            <button onclick="setZoneMode('A')" id="pz-A" class="zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10">Zone A</button>
+                            <button onclick="setZoneMode('B')" id="pz-B" class="zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10">Zone B</button>
                         </div>
                     </div>
                 </div>
+
                 <button onclick="executePrint()" class="mt-8 w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-xl shadow-indigo-900/20 transition-all flex items-center justify-center gap-2 font-khmer">
                     <i data-lucide="download"></i> ទាញយក PDF
                 </button>
@@ -257,28 +269,18 @@
     <script>
         const API_URL = "https://attendance-break-di.onrender.com"; 
         
-        // --- SOCKET IO SETUP ---
-        // This connects to the server and listens for updates
         const socket = io(API_URL);
         
-        socket.on('connect', () => {
-            console.log("Connected to Real-time Server");
-        });
-
-        // When server says "data_updated", we fetch new data immediately
-        socket.on('data_updated', () => {
-            console.log("Change detected on another device, refreshing...");
-            manualFetch(); // Refresh data
-        });
+        socket.on('connect', () => console.log("Connected to Real-time Server"));
+        socket.on('data_updated', () => manualFetch());
 
         let currentMode = 'daily';
         let availableSheets = [];
         let fetchedData = []; 
         let printMode = 'daily';
+        let printZone = 'all'; 
         let staffCacheData = [];
         let pollingInterval = null;
-
-        // --- AUTHENTICATION LOGIC ---
 
         if(localStorage.getItem('admin_token')) {
             showDashboard();
@@ -292,7 +294,7 @@
             const btnText = document.getElementById('btn-text');
 
             btn.disabled = true;
-            btnText.innerText = "កំពុងផ្ទៀងផ្ទាត់...";
+            btnText.innerText = "Checking...";
             
             try {
                 const res = await fetch(`${API_URL}/login`, {
@@ -300,42 +302,16 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ email, password })
                 });
-
                 const data = await res.json();
 
                 if (data.success) {
                     localStorage.setItem('admin_token', data.token);
-                    
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'ជោគជ័យ',
-                        text: 'សូមស្វាគមន៍មកកាន់ប្រព័ន្ធ',
-                        timer: 1500,
-                        showConfirmButton: false,
-                        background: '#1e1e1e',
-                        color: '#fff'
-                    }).then(() => {
-                        showDashboard();
-                    });
-
+                    showDashboard();
                 } else {
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'បរាជ័យ',
-                        text: 'អ៊ីមែល ឬ ពាក្យសម្ងាត់មិនត្រឹមត្រូវ!',
-                        confirmButtonColor: '#d33',
-                        background: '#1e1e1e',
-                        color: '#fff'
-                    });
+                    Swal.fire({ icon: 'error', title: 'Login Failed', background: '#1e1e1e', color: '#fff' });
                 }
             } catch (err) {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'Error',
-                    text: 'Cannot connect to server',
-                    background: '#1e1e1e',
-                    color: '#fff'
-                });
+                Swal.fire({ icon: 'error', title: 'Server Error', background: '#1e1e1e', color: '#fff' });
             } finally {
                 btn.disabled = false;
                 btnText.innerText = "ចូលប្រព័ន្ធ";
@@ -359,7 +335,6 @@
             lucide.createIcons();
             try {
                 showLoading(); 
-                
                 const staffRes = await fetch(`${API_URL}/staff`);
                 if(staffRes.ok) staffCacheData = await staffRes.json();
 
@@ -374,25 +349,18 @@
                 
                 populateFilter('daily', `${day}-${month}-${year}`);
                 await fetchReport(false); 
-                
-                // Polling reduced to 10 seconds just as a backup
                 startPolling();
-
             } catch (error) {
-                console.error(error);
-                document.getElementById('view-title').innerText = "ការតភ្ជាប់បរាជ័យ";
-                document.getElementById('view-title').classList.add("text-rose-500");
                 hideLoading();
             }
         }
 
         function startPolling() {
             if(pollingInterval) clearInterval(pollingInterval);
-            // Backup polling every 10 seconds in case socket fails
             pollingInterval = setInterval(() => { fetchReport(true); }, 10000); 
         }
 
-        function showLoading(text = "កំពុងផ្ទុកទិន្នន័យ") {
+        function showLoading(text = "Loading...") {
             document.getElementById('loader-text').innerText = text;
             document.getElementById('loading-overlay').classList.remove('hidden');
         }
@@ -422,7 +390,6 @@
                     if(opt === defaultVal) el.selected = true;
                     select.appendChild(el);
                 });
-                if(!options.includes(defaultVal) && select.options.length > 0) select.selectedIndex = 0;
             }
         }
 
@@ -529,7 +496,6 @@
                 const lastBreak = user.breaks[user.breaks.length - 1];
                 const isActive = !lastBreak.timeIn;
                 const borderClass = isActive ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)] bg-indigo-900/10' : 'border-white/5 hover:border-white/10';
-                const statusDot = isActive ? '<div class="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-[#141414] animate-pulse"></div>' : '';
                 
                 const timelineHtml = user.breaks.map(b => `
                     <div class="timeline-item relative pl-4 pb-3 last:pb-0">
@@ -553,7 +519,6 @@
                         <div class="flex items-center gap-3 mb-4">
                             <div class="relative">
                                 <img src="${imgUrl}" class="w-12 h-12 rounded-full object-cover bg-slate-800 border border-white/10">
-                                ${statusDot}
                             </div>
                             <div class="overflow-hidden">
                                 <h4 class="text-white font-bold text-sm truncate font-khmer">${khName}</h4>
@@ -607,8 +572,10 @@
             tbody.innerHTML = newHTML;
         }
 
-        function openPrintModal() { document.getElementById('print-modal').classList.remove('hidden'); setPrintMode('daily'); }
+        // --- NEW ZONE FILTER LOGIC ---
+        function openPrintModal() { document.getElementById('print-modal').classList.remove('hidden'); setPrintMode('daily'); setZoneMode('all'); }
         function closePrintModal() { document.getElementById('print-modal').classList.add('hidden'); }
+        
         function setPrintMode(mode) {
             printMode = mode;
             document.querySelectorAll('.print-mode-btn').forEach(btn => {
@@ -628,76 +595,177 @@
                 select.appendChild(el);
             });
         }
+
+        function setZoneMode(zone) {
+            printZone = zone;
+            document.querySelectorAll('.zone-mode-btn').forEach(btn => {
+                btn.className = "zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10 transition-all";
+            });
+            document.getElementById(`pz-${zone}`).className = "zone-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer border border-transparent shadow-lg shadow-indigo-500/20 transition-all";
+        }
+
+        // ===========================================
+        //  SMART PAGINATION + ZONE FILTER (FIXED)
+        // ===========================================
         async function executePrint() {
             const range = document.getElementById('print-range-select').value;
-            if(!range) return;
+            if (!range) return;
+
             closePrintModal();
-            showLoading("កំពុងបង្កើត PDF...");
+            showLoading("Generating Smart PDF...");
+
+            if (typeof window.jspdf === 'undefined' || typeof window.html2canvas === 'undefined') {
+                alert("Libraries loading... try again in 3 seconds.");
+                hideLoading();
+                return;
+            }
+
             try {
                 const res = await fetch(`${API_URL}/report?mode=${printMode}&filter=${range}`);
                 const json = await res.json();
-                const dataToPrint = json.raw;
-                if (dataToPrint.length === 0) { alert("មិនមានទិន្នន័យសម្រាប់ការជ្រើសរើសនេះទេ។"); hideLoading(); return; }
+                let data = json.raw;
+                if (data.length === 0) { alert("No Data Found"); hideLoading(); return; }
+
+                // --- 1. FILTER BY ZONE ---
+                if (printZone !== 'all') {
+                    data = data.filter(item => item.area && String(item.area).trim() === printZone);
+                }
+                
+                if (data.length === 0) { alert(`No data found for Zone ${printZone}`); hideLoading(); return; }
+
+                // --- 2. AGGREGATE DATA ---
                 const aggregation = {};
-                dataToPrint.forEach(log => {
-                    if(!aggregation[log.id]) {
+                
+                data.forEach(log => {
+                    if (!aggregation[log.id]) {
                         const staff = staffCacheData.find(s => s.id == log.id);
-                        const khName = staff ? (staff.name_kh || staff.name_en) : log.name;
-                        const groupName = staff ? (staff.group || log.group) : log.group;
-                        aggregation[log.id] = { id: log.id, name: khName, group: groupName, breakCount: 0, otCount: 0 };
+                        aggregation[log.id] = {
+                            id: log.id,
+                            name: staff ? (staff.name_kh || staff.name_en) : log.name,
+                            group: staff ? (staff.group || log.group) : log.group,
+                            breakCount: 0,
+                            otCount: 0
+                        };
                     }
                     aggregation[log.id].breakCount++;
-                    if(log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
+                    if (log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
                 });
-                const rows = Object.values(aggregation).sort((a,b) => b.breakCount - a.breakCount);
-                const printContainer = document.getElementById('print-container');
-                printContainer.innerHTML = `
-                    <div style="padding: 20px; font-family: 'Noto Sans Khmer', sans-serif;">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px;">
-                            <h1 style="font-size: 24px; font-weight: bold; color: #000;">របាយការណ៍សម្រាកបុគ្គលិក</h1>
-                            <div style="text-align: right;">
-                                <p style="font-size: 12px; color: #555;">បង្កើតនៅ: ${new Date().toLocaleString('km-KH')}</p>
-                                <p style="font-size: 14px; font-weight: bold; color: #000;">រយៈពេល: ${range}</p>
-                            </div>
-                        </div>
-                        <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                            <thead>
-                                <tr style="background-color: #4f46e5; color: white;">
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">អត្តលេខ</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">ឈ្មោះ</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: left;">ផ្នែក</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">ចំនួនសម្រាក</th>
-                                    <th style="padding: 10px; border: 1px solid #ddd; text-align: center;">លើសម៉ោង</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${rows.map((row, index) => `
-                                    <tr style="background-color: ${index % 2 === 0 ? '#ffffff' : '#f9fafb'}; color: #000;">
-                                        <td style="padding: 8px; border: 1px solid #ddd;">${row.id}</td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; font-family: 'Noto Sans Khmer', sans-serif;">${row.name}</td>
-                                        <td style="padding: 8px; border: 1px solid #ddd;">${row.group}</td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center;">${row.breakCount}</td>
-                                        <td style="padding: 8px; border: 1px solid #ddd; text-align: center; color: ${row.otCount > 0 ? 'red' : 'black'}; font-weight: ${row.otCount > 0 ? 'bold' : 'normal'};">${row.otCount}</td>
-                                    </tr>
-                                `).join('')}
-                            </tbody>
-                        </table>
-                        <div style="margin-top: 20px; font-size: 12px; color: #000; border-top: 1px solid #000; padding-top: 10px;">
-                            <p><strong>បុគ្គលិកសរុប:</strong> ${rows.length}</p>
-                            <p><strong>កំណត់ត្រាសរុប:</strong> ${dataToPrint.length}</p>
+
+                const allRows = Object.values(aggregation).sort((a, b) => b.breakCount - a.breakCount);
+
+                // --- 3. PAGINATION LOGIC (NO STATS) ---
+                // REDUCED ROWS to fit larger fonts
+                const rowsPerPage = 25; 
+                const pages = [];
+                
+                let remaining = [...allRows];
+                let rowCounter = 1; // Global counter for "No." column
+
+                while(remaining.length > 0) {
+                    const batch = remaining.slice(0, rowsPerPage);
+                    // Add index property to each row for this page
+                    const batchWithIndex = batch.map(row => ({ ...row, index: rowCounter++ }));
+                    
+                    pages.push(batchWithIndex);
+                    remaining = remaining.slice(rowsPerPage);
+                }
+
+                // --- 4. GENERATE PDF ---
+                const { jsPDF } = window.jspdf;
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = 210; 
+                const staging = document.getElementById('print-staging-area');
+
+                for (let i = 0; i < pages.length; i++) {
+                    const rows = pages[i];
+                    
+                    // Render HTML for this specific page
+                    staging.innerHTML = generatePageHTML(rows, i + 1, pages.length, range, printZone);
+
+                    const canvas = await window.html2canvas(staging.querySelector('.print-page'), {
+                        scale: 2, 
+                        useCORS: true,
+                        logging: false
+                    });
+
+                    const imgData = canvas.toDataURL('image/png');
+                    
+                    if (i > 0) pdf.addPage();
+                    const imgProps = pdf.getImageProperties(imgData);
+                    const pdfImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
+                    
+                    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfImgHeight);
+                }
+
+                pdf.save(`Report_${range}_Zone${printZone}.pdf`);
+
+            } catch (e) {
+                console.error(e);
+                alert("PDF Error: " + e.message);
+            } finally {
+                hideLoading();
+                document.getElementById('print-staging-area').innerHTML = ''; 
+            }
+        }
+
+        // --- HTML TEMPLATE GENERATOR ---
+        function generatePageHTML(rows, pageNum, totalPages, range, zone) {
+            
+            const headerHTML = `
+                <div class="flex justify-between items-end border-b-2 border-indigo-600 pb-4 mb-6">
+                    <div>
+                        <h1 class="text-3xl font-bold text-slate-900">Staff Attendance Report</h1>
+                        <div class="flex gap-4 mt-2">
+                            <p class="text-slate-500 text-sm">Period: <span class="font-bold text-indigo-600">${range}</span></p>
+                            <p class="text-slate-500 text-sm">Zone: <span class="font-bold text-indigo-600">${zone === 'all' ? 'All Zones' : 'Zone ' + zone}</span></p>
                         </div>
                     </div>
-                `;
-                const { jsPDF } = window.jspdf;
-                const canvas = await html2canvas(printContainer, { scale: 2 });
-                const imgData = canvas.toDataURL('image/png');
-                const pdf = new jsPDF('p', 'mm', 'a4');
-                const pdfWidth = pdf.internal.pageSize.getWidth();
-                const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-                pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-                pdf.save(`Attendance_${range}.pdf`);
-            } catch (e) { alert("មានបញ្ហាក្នុងការបង្កើត PDF"); } 
-            finally { hideLoading(); document.getElementById('print-container').innerHTML = ''; }
+                    <div class="text-right">
+                        <p class="text-xs text-slate-400">Generated on</p>
+                        <p class="text-sm font-bold text-slate-700">${new Date().toLocaleString('km-KH')}</p>
+                    </div>
+                </div>
+            `;
+
+            // Updated HTML with "No." column and larger fonts
+            const rowsHTML = rows.map((row, index) => `
+                <tr class="${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'} border-b border-slate-200">
+                    <td class="p-3 text-center font-bold text-slate-500" style="font-size: 16px;">${row.index}</td>
+                    <td class="p-3 font-mono font-bold text-slate-900" style="font-size: 16px;">${row.id}</td>
+                    <td class="p-3 font-bold text-slate-800" style="font-size: 16px;">${row.name}</td>
+                    <td class="p-3"><span class="bg-slate-200 text-slate-600 px-2 py-1 rounded font-bold" style="font-size: 14px;">${row.group}</span></td>
+                    <td class="p-3 text-center font-bold" style="font-size: 16px;">${row.breakCount}</td>
+                    <td class="p-3 text-center ${row.otCount > 0 ? 'text-rose-600 font-black' : 'text-slate-400'}" style="font-size: 16px;">${row.otCount > 0 ? row.otCount + ' Times' : '-'}</td>
+                </tr>
+            `).join('');
+
+            return `
+                <div class="print-page">
+                    <div>
+                        ${headerHTML}
+                        
+                        <table class="w-full text-left border-collapse rounded-lg overflow-hidden print-table">
+                            <thead>
+                                <tr class="bg-slate-800 text-white uppercase tracking-wide">
+                                    <th class="p-3 text-center" style="width: 50px;">No.</th>
+                                    <th class="p-3">ID</th>
+                                    <th class="p-3">Name</th>
+                                    <th class="p-3">Department</th>
+                                    <th class="p-3 text-center">Breaks</th>
+                                    <th class="p-3 text-center">Overtime</th>
+                                </tr>
+                            </thead>
+                            <tbody class="text-slate-600">
+                                ${rowsHTML}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="text-right border-t border-slate-200 pt-4 mt-4">
+                        <p class="text-slate-400 text-xs">Page ${pageNum} of ${totalPages} • Staff Hub System</p>
+                    </div>
+                </div>
+            `;
         }
 
         lucide.createIcons();
