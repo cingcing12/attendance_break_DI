@@ -18,38 +18,22 @@ const READ_SHEET_NAME = 'DB_DUC_BKU';
 
 const WRITE_SPREADSHEET_ID = '1pzOMgXkyAuLTcU-2P7nXryuELhP8f29nHvLXEErpYxw'; 
 const DI_SHEET_NAME = 'Sheet3';
-const TEMPLATE_SHEET_NAME = 'Sheet1';
 
 // ==========================
-// AUTH CONFIGURATION
+// AUTH
 // ==========================
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
-// ==========================
-// CACHE SYSTEM
-// ==========================
-let STAFF_CACHE = {
-    data: null,
-    imageMap: null,
-    idMap: null,
-    nameMap: null, // New: Maps Any Name (EN/KH) -> Image
-    timestamp: 0,
-    duration: 2 * 60 * 1000 // Reduced cache time for easier testing
-};
-
-let META_CACHE = {
-    sheets: null,
-    timestamp: 0,
-    duration: 60 * 1000 
-};
-
-let fetchStaffPromise = null;
-
 const auth = new google.auth.GoogleAuth({
     credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
 });
+
+// ==========================
+// CACHING (High Performance)
+// ==========================
+let STAFF_CACHE = { data: null, timestamp: 0, duration: 10 * 60 * 1000 };
+let BREAKS_CACHE = { data: null, timestamp: 0, duration: 5 * 1000 };
+let fetchStaffPromise = null;
+let fetchBreaksPromise = null;
 
 // ==========================
 // HELPERS
@@ -77,33 +61,20 @@ function parseTimeStr(timeStr) {
     if (!timeStr) return new Date();
     const [time, modifier] = timeStr.trim().split(/\s+/);
     let [hours, minutes] = time.split(':');
-    if (hours === '12') hours = '00';
-    if (modifier === 'PM') hours = parseInt(hours, 10) + 12;
+    hours = parseInt(hours);
+    if (hours === 12 && modifier === 'AM') hours = 0;
+    if (modifier === 'PM' && hours !== 12) hours += 12;
     const d = getCambodiaDate();
-    d.setHours(parseInt(hours, 10), parseInt(minutes, 10), 0, 0);
+    d.setHours(hours, parseInt(minutes), 0, 0);
     return d;
 }
 
-function chunkArray(array, size) {
-    const result = [];
-    for (let i = 0; i < array.length; i += size) {
-        result.push(array.slice(i, i + size));
-    }
-    return result;
-}
-
-function cleanImageLink(val) {
-    if (!val) return '';
-    if (val.startsWith('=IMAGE')) {
-        const m = val.match(/"([^"]+)"/);
-        return m ? m[1] : '';
-    }
-    return val;
-}
-
 function getDirectImageLink(url) {
-    url = cleanImageLink(url);
     if (!url) return '';
+    if (url.startsWith('=IMAGE')) {
+        const m = url.match(/"([^"]+)"/);
+        if (m) url = m[1];
+    }
     if (url.match(/\.(jpg|jpeg|png|gif)$/i)) return url;
     const id = url.match(/[-\w]{25,}/);
     if (id && url.includes('drive.google.com')) {
@@ -112,38 +83,84 @@ function getDirectImageLink(url) {
     return url;
 }
 
-// Helper to normalize strings for comparison
 function safeKey(str) {
-    if (!str) return '';
-    return String(str).trim().toUpperCase();
+    return str ? String(str).trim().toUpperCase() : '';
 }
 
-// --- INTELLIGENT CACHING ---
+function getNextAvailableCard(activeBreaks, area) {
+    const min = area === 'A' ? 51 : 1;
+    const max = area === 'A' ? 150 : 50;
+    const used = new Set();
+
+    activeBreaks.forEach(b => {
+        if (b.area === area && b.card) {
+            try {
+                const numStr = b.card.split('_')[1];
+                const num = parseInt(numStr);
+                if (!isNaN(num) && num >= min && num <= max) used.add(num);
+            } catch(e) {}
+        }
+    });
+
+    for (let i = min; i <= max; i++) {
+        if (!used.has(i)) {
+            const formatted = (area === 'B' && i < 10) ? '0' + i : i.toString();
+            return `DD_${formatted}`;
+        }
+    }
+    return null;
+}
+
+async function ensureTodaySheet(sheets) {
+    const today = getTodaySheetName();
+    try {
+        await sheets.spreadsheets.values.get({ 
+            spreadsheetId: WRITE_SPREADSHEET_ID, 
+            range: `'${today}'!A1` 
+        });
+        return today;
+    } catch (e) {
+        try {
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                resource: { requests: [{ addSheet: { properties: { title: today } } }] }
+            });
+            const header = [['Id', 'Name', 'Group', 'timeOut', 'timeIn', 'area', 'date', 'overTime', 'card']];
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                range: `${today}!A1:I1`,
+                valueInputOption: 'RAW',
+                resource: { values: header }
+            });
+            return today;
+        } catch (createErr) {
+            return today; 
+        }
+    }
+}
+
+// ==========================
+// CACHED FETCHERS
+// ==========================
 
 async function getCachedStaffData(sheets) {
     const now = Date.now();
-    
-    // Serve from cache if valid
     if (STAFF_CACHE.data && (now - STAFF_CACHE.timestamp < STAFF_CACHE.duration)) {
         return STAFF_CACHE;
     }
-
     if (fetchStaffPromise) return fetchStaffPromise;
 
-    console.log('🔄 Fetching Fresh Staff Data (Cache Expired or Empty)...');
     fetchStaffPromise = (async () => {
         try {
             const [mainRes, imgRes, diRes] = await Promise.all([
-                sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI`, valueRenderOption: 'FORMATTED_VALUE' }),
+                sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI` }),
                 sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' }),
-                sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M`, valueRenderOption: 'FORMATTED_VALUE' })
+                sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M` })
             ]);
 
             const mainRows = mainRes.data.values || [];
             const imgRows = imgRes.data.values || [];
             const diRows = diRes.data.values || [];
-
-            console.log(`📊 Loaded ${mainRows.length} staff rows from DB.`);
 
             const scanMap = {};
             diRows.forEach(r => {
@@ -151,50 +168,37 @@ async function getCachedStaffData(sheets) {
                 const nameEN = r[12];
                 if (status && status.includes('Scan') && nameEN) {
                     const id = r[4] ? String(r[4]).trim() : null;
-                    if(id) scanMap[safeKey(nameEN)] = { id: id, group: r[6] };
+                    if (id) scanMap[safeKey(nameEN)] = { id, group: r[6] };
                 }
             });
 
-            const imageMap = {};
-            const idMap = {}; 
-            const nameMap = {}; // Backup map for Khmer names
+            const idMap = {};
+            const nameMap = {};
 
             mainRows.forEach((row, i) => {
-                const id = row[1] ? String(row[1]).trim() : null; // Column B
-                const nameEN = row[4]; // Column E
-                const nameKH = row[3]; // Column D (Khmer Name)
-                
+                const id = row[1] ? String(row[1]).trim() : null;
+                const nameEN = row[4];
+                const nameKH = row[3];
                 const imgFormula = imgRows[i] ? imgRows[i][0] : '';
                 const imgUrl = getDirectImageLink(imgFormula);
-                
-                // Populate Maps
+
                 if (imgUrl) {
                     if (id) idMap[id] = imgUrl;
                     if (nameEN) nameMap[safeKey(nameEN)] = imgUrl;
                     if (nameKH) nameMap[safeKey(nameKH)] = imgUrl;
-
-                    // DEBUG: Log specific ID to verify
-                    if (id === '553') {
-                        console.log(`✅ FOUND IMAGE FOR ID 553: ${imgUrl.substring(0, 30)}...`);
-                        console.log(`   - Name EN: ${nameEN}`);
-                        console.log(`   - Name KH: ${nameKH}`);
-                    }
                 }
             });
 
             const staffList = mainRows.map((r, i) => {
-                const nameEN = r[4]; 
-                const nameKH = r[3]; 
-                
+                const nameEN = r[4];
                 if (!nameEN) return null;
                 const scan = scanMap[safeKey(nameEN)];
                 if (!scan) return null;
 
-                const rawID = scan.id || r[1];
-                const finalID = rawID ? String(rawID).trim() : null;
-                
-                // Try finding image via ID Map first, then Name Map
+                const finalID = scan.id || r[1] ? String(scan.id || r[1]).trim() : null;
+                const nameKH = r[3];
                 let finalImg = '';
+                
                 if (finalID && idMap[finalID]) finalImg = idMap[finalID];
                 else if (nameKH && nameMap[safeKey(nameKH)]) finalImg = nameMap[safeKey(nameKH)];
                 else finalImg = getDirectImageLink(imgRows[i]?.[0]);
@@ -204,181 +208,76 @@ async function getCachedStaffData(sheets) {
                     name_en: nameEN,
                     name_kh: nameKH || nameEN,
                     group: scan.group || r[26] || 'Staff',
-                    image: finalImg,
-                    training_place: r[24] || ''
+                    image: finalImg
                 };
             }).filter(Boolean);
 
-            STAFF_CACHE = {
-                data: staffList,
-                imageMap: imageMap,
-                idMap: idMap,
-                nameMap: nameMap,
-                timestamp: Date.now(),
-                duration: 5 * 60 * 1000
-            };
-            console.log("✅ Staff Cache Rebuilt Successfully.");
+            STAFF_CACHE = { data: staffList, idMap, nameMap, timestamp: Date.now(), duration: STAFF_CACHE.duration };
             return STAFF_CACHE;
-
         } catch (e) {
-            console.error("❌ Staff fetch failed:", e);
+            console.error("Staff fetch failed:", e);
             throw e;
         } finally {
             fetchStaffPromise = null;
         }
     })();
-
     return fetchStaffPromise;
 }
 
-async function getCachedSheetsMeta(sheets) {
+async function getCachedBreaks(sheets) {
     const now = Date.now();
-    if (META_CACHE.sheets && (now - META_CACHE.timestamp < META_CACHE.duration)) {
-        return META_CACHE.sheets;
+    if (BREAKS_CACHE.data && (now - BREAKS_CACHE.timestamp < BREAKS_CACHE.duration)) {
+        return BREAKS_CACHE.data;
     }
-    
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
-    const titles = meta.data.sheets.map(s => s.properties.title);
-    
-    META_CACHE = {
-        sheets: titles,
-        timestamp: now,
-        duration: 60 * 1000
-    };
-    return titles;
-}
+    if (fetchBreaksPromise) return fetchBreaksPromise;
 
-async function ensureTodaySheet(sheets) {
-    const today = getTodaySheetName();
-    try {
-        const names = await getCachedSheetsMeta(sheets);
-        if (names.includes(today)) return today;
-
-        await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            resource: { requests: [{ addSheet: { properties: { title: today } } }] }
-        });
-        META_CACHE.timestamp = 0; 
-
-        const header = await sheets.spreadsheets.values.get({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            range: `${TEMPLATE_SHEET_NAME}!A1:H1`
-        });
-
-        if (header.data.values) {
-            await sheets.spreadsheets.values.update({
-                spreadsheetId: WRITE_SPREADSHEET_ID,
-                range: `${today}!A1`,
-                valueInputOption: 'RAW',
-                resource: { values: header.data.values }
+    fetchBreaksPromise = (async () => {
+        try {
+            const sheet = await ensureTodaySheet(sheets);
+            const r = await sheets.spreadsheets.values.get({ 
+                spreadsheetId: WRITE_SPREADSHEET_ID, 
+                range: `'${sheet}'!A:I` 
             });
+            const rows = r.data.values || [];
+            const staffCache = await getCachedStaffData(sheets);
+
+            const active = rows.slice(1).map((row, i) => {
+                const id = row[0] ? String(row[0]).trim() : null;
+                const name = row[1];
+                let imgUrl = '';
+                if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
+                else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
+
+                return {
+                    rowIndex: i + 2,
+                    id, name, group: row[2],
+                    timeOut: row[3],
+                    timeIn: row[4],
+                    area: row[5],
+                    date: row[6],
+                    overtime: row[7],
+                    card: row[8] || '', // Ensures CARD data is sent
+                    image: imgUrl
+                };
+            }).filter(r => r.timeOut && !r.timeIn);
+
+            BREAKS_CACHE = { data: active, timestamp: Date.now(), duration: BREAKS_CACHE.duration };
+            return active;
+        } catch (e) {
+            console.error("Breaks fetch failed:", e);
+            return BREAKS_CACHE.data || [];
+        } finally {
+            fetchBreaksPromise = null;
         }
-        return today;
-    } catch (err) {
-        return today;
-    }
+    })();
+    return fetchBreaksPromise;
 }
 
 // ==========================
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('API Online'));
-
-app.get('/available-sheets', async (req, res) => {
-    try {
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const sheetNames = await getCachedSheetsMeta(sheets);
-        const dateSheets = sheetNames.filter(title => /^\d{2}-\d{2}-\d{4}$/.test(title));
-        res.json(dateSheets);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-app.get('/report', async (req, res) => {
-    try {
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-
-        const mode = req.query.mode || 'daily';
-        const filter = req.query.filter; 
-
-        // Ensure cache is populated
-        const staffCache = await getCachedStaffData(sheets);
-        const allSheetNames = await getCachedSheetsMeta(sheets);
-        
-        let targetSheets = [];
-        if (filter) {
-            if (mode === 'daily') {
-                if (allSheetNames.includes(filter)) targetSheets.push(filter);
-            } else {
-                const suffix = `-${filter}`;
-                targetSheets = allSheetNames.filter(name => name.endsWith(suffix));
-            }
-        } else {
-            const today = getTodaySheetName();
-            if (allSheetNames.includes(today)) targetSheets.push(today);
-        }
-
-        const sheetChunks = chunkArray(targetSheets, 50); 
-        let allRecords = [];
-
-        for (const chunk of sheetChunks) {
-            const ranges = chunk.map(name => `'${name}'!A2:H`);
-            
-            if (ranges.length > 0) {
-                const batchRes = await sheets.spreadsheets.values.batchGet({
-                    spreadsheetId: WRITE_SPREADSHEET_ID,
-                    ranges: ranges
-                });
-                await sleep(150); 
-
-                const valueRanges = batchRes.data.valueRanges || [];
-                valueRanges.forEach((rangeData) => {
-                    const rows = rangeData.values || [];
-                    if (rows.length > 0) {
-                        const parsed = rows.map(row => {
-                            const id = row[0] ? String(row[0]).trim() : null;
-                            const name = row[1] ? String(row[1]).trim() : null;
-                            
-                            // [FIX] Priority: ID > Name (Khmer or English)
-                            let imgUrl = '';
-                            if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
-                            else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
-
-                            return {
-                                id: id,
-                                name: name,
-                                group: row[2],
-                                timeOut: row[3],
-                                timeIn: row[4],
-                                area: row[5],
-                                date: row[6],
-                                overtime: row[7] || "0",
-                                image: imgUrl
-                            };
-                        });
-                        allRecords.push(...parsed);
-                    }
-                });
-            }
-        }
-
-        res.json({
-            mode: mode,
-            filter: filter,
-            count: allRecords.length,
-            raw: allRecords
-        });
-
-    } catch (err) {
-        console.error("Report Error:", err.message);
-        if (err.code === 429) res.status(429).json({ error: "System busy. Please wait." });
-        else res.status(500).json({ error: err.message });
-    }
-});
+app.get('/', (req, res) => res.send('Staff Hub API - Card Update'));
 
 app.get('/staff', async (req, res) => {
     try {
@@ -395,83 +294,85 @@ app.get('/active-breaks', async (req, res) => {
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        
-        const staffCache = await getCachedStaffData(sheets);
-        const sheet = await ensureTodaySheet(sheets);
-
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H` });
-        const rows = r.data.values || [];
-        
-        const active = rows.slice(1)
-            .map((r, i) => {
-                const id = r[0] ? String(r[0]).trim() : null;
-                const name = r[1];
-                
-                // [FIX] Priority: ID > Name
-                let imgUrl = '';
-                if(id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
-                else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
-
-                return {
-                    rowIndex: i + 2,
-                    id: id,
-                    name: name,
-                    group: r[2],
-                    timeOut: r[3],
-                    timeIn: r[4],
-                    area: r[5],
-                    image: imgUrl 
-                };
-            })
-            .filter(r => !r.timeIn); 
-
-        res.json(active);
+        const data = await getCachedBreaks(sheets);
+        res.json(data);
     } catch (e) {
-        console.error(e);
-        res.json([]);
+        res.status(500).json([]);
     }
 });
 
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
+    if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
+
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        const sheet = await ensureTodaySheet(sheets);
+        
+        BREAKS_CACHE.timestamp = 0; 
+        const activeBreaks = await getCachedBreaks(sheets);
+        
+        const card = getNextAvailableCard(activeBreaks, area);
+        if (!card) return res.status(400).json({ error: 'No available card in this zone' });
+
         const timeStr = getCurrentTimeString();
         const dateStr = getTodaySheetName();
-        const cleanId = String(id).trim();
-        const values = [[cleanId, name, group, timeStr, '', area, dateStr, '']];
+        const sheet = dateStr; 
+
+        const values = [[
+            String(id).trim(), name, group || '', timeStr, '', area, dateStr, '', card
+        ]];
+
         await sheets.spreadsheets.values.append({
-            spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H`, valueInputOption: 'USER_ENTERED', resource: { values }
+            spreadsheetId: WRITE_SPREADSHEET_ID,
+            range: `'${sheet}'!A:I`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values }
         });
-        res.json({ status: 'success', timeOut: timeStr });
-    } catch { res.status(500).json({ status: 'error' }); }
+
+        BREAKS_CACHE.timestamp = 0;
+        res.json({ status: 'success', timeOut: timeStr, card });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ status: 'error' });
+    }
 });
 
 app.post('/timein', async (req, res) => {
     const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        const sheet = await ensureTodaySheet(sheets);
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:H` });
-        const rows = r.data.values;
-        let rowIndex = -1, outTime = '';
+        const sheet = getTodaySheetName();
+
+        const r = await sheets.spreadsheets.values.get({ 
+            spreadsheetId: WRITE_SPREADSHEET_ID, 
+            range: `'${sheet}'!A:I` 
+        });
+        const rows = r.data.values || [];
         
+        let rowIndex = -1;
+        let outTime = '';
         const targetId = String(id).trim();
 
         for (let i = rows.length - 1; i >= 1; i--) {
             const rowId = rows[i][0] ? String(rows[i][0]).trim() : '';
-            if (rowId == targetId && !rows[i][4]) {
-                rowIndex = i + 1; outTime = rows[i][3]; break;
+            if (rowId === targetId && !rows[i][4]) {
+                rowIndex = i + 1;
+                outTime = rows[i][3];
+                break;
             }
         }
-        if (rowIndex === -1) return res.status(404).json({ status: 'error' });
+
+        if (rowIndex === -1) return res.status(404).json({ status: 'not_found' });
+
         const now = getCambodiaDate();
         const diff = Math.floor((now - parseTimeStr(outTime)) / 60000);
         const overtime = diff > 15 ? `${diff - 15} mins` : '0';
         const timeInStr = getCurrentTimeString();
+
         await sheets.spreadsheets.values.batchUpdate({
             spreadsheetId: WRITE_SPREADSHEET_ID,
             resource: {
@@ -482,21 +383,15 @@ app.post('/timein', async (req, res) => {
                 ]
             }
         });
+
+        BREAKS_CACHE.timestamp = 0;
         res.json({ status: 'success', timeIn: timeInStr });
-    } catch (err) { res.status(500).json({ status: 'error' }); }
-});
-
-// --- NEW LOGIN ROUTE ---
-app.post('/login', (req, res) => {
-    const { email, password } = req.body;
-
-    // Simple strict comparison against .env variables
-    if (email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
-        res.json({ success: true, token: 'admin_token_authorized' });
-    } else {
-        res.status(401).json({ success: false, message: 'Invalid Credentials' });
+    } catch (err) {
+        console.error(err);
+        res.status(500).json({ status: 'error' });
     }
 });
-// -----------------------
 
-app.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server on port http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port ${PORT}`);
+});

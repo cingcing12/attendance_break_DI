@@ -45,11 +45,8 @@
             overflow-x: hidden;
             -webkit-tap-highlight-color: transparent;
             
-            /* --- COOL STATIC BACKGROUND --- */
             background-image: 
-                /* Subtle Noise Texture */
                 url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)' opacity='0.04'/%3E%3C/svg%3E"),
-                /* Deep Mesh Gradients */
                 radial-gradient(at 0% 0%, rgba(34, 211, 238, 0.08) 0px, transparent 50%),
                 radial-gradient(at 100% 0%, rgba(244, 63, 94, 0.08) 0px, transparent 50%),
                 radial-gradient(at 100% 100%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
@@ -58,7 +55,6 @@
             background-size: cover;
         }
 
-        /* --- GLASS COMPONENTS --- */
         .glass-panel {
             background: rgba(20, 20, 24, 0.7);
             backdrop-filter: blur(24px);
@@ -67,7 +63,6 @@
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
-        /* --- CARD DESIGN --- */
         .card-onyx {
             position: relative;
             background: rgba(30, 30, 35, 0.4);
@@ -85,11 +80,9 @@
             box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.5);
         }
 
-        /* Hover Glow Effect */
         .card-onyx.cyan:hover { border-color: rgba(34, 211, 238, 0.4); box-shadow: 0 10px 40px -10px rgba(34, 211, 238, 0.15); }
         .card-onyx.rose:hover { border-color: rgba(251, 113, 133, 0.4); box-shadow: 0 10px 40px -10px rgba(251, 113, 133, 0.15); }
 
-        /* --- SEARCH INPUT --- */
         .search-box {
             background: rgba(20, 20, 20, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -101,7 +94,6 @@
             box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
         }
 
-        /* --- MOBILE DOCK --- */
         .mobile-dock {
             background: rgba(20, 20, 24, 0.9);
             backdrop-filter: blur(20px);
@@ -111,12 +103,10 @@
             box-shadow: 0 20px 40px -5px rgba(0,0,0,0.5);
         }
 
-        /* --- UTILS --- */
         .tab-indicator { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
         #scroll-sentinel { height: 20px; width: 100%; opacity: 0; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
 
-        /* SweetAlert */
         div:where(.swal2-container) div:where(.swal2-popup) {
             background: #18181b !important;
             border: 1px solid #333;
@@ -147,7 +137,7 @@
                         <div class="w-14 h-14 rounded-2xl border border-cyan-500/20 flex items-center justify-center text-2xl font-black text-cyan-400 bg-cyan-500/5 group-hover:bg-cyan-500 group-hover:text-black transition-all duration-300">A</div>
                         <div>
                             <h2 class="text-3xl font-bold text-white font-khmer mb-1">តំបន់ A</h2>
-                            <p class="text-cyan-400 text-xs font-bold tracking-widest uppercase opacity-60 group-hover:opacity-100 transition-opacity">Canteen</p>
+                            <p class="text-cyan-400 text-xs font-bold tracking-widest uppercase opacity-60 group-hover:opacity-100 transition-opacity">Canteen (DD_51 to DD_150)</p>
                         </div>
                     </div>
                 </button>
@@ -157,7 +147,7 @@
                         <div class="w-14 h-14 rounded-2xl border border-rose-500/20 flex items-center justify-center text-2xl font-black text-rose-400 bg-rose-500/5 group-hover:bg-rose-500 group-hover:text-black transition-all duration-300">B</div>
                         <div>
                             <h2 class="text-3xl font-bold text-white font-khmer mb-1">តំបន់ B</h2>
-                            <p class="text-rose-400 text-xs font-bold tracking-widest uppercase opacity-60 group-hover:opacity-100 transition-opacity">Garden</p>
+                            <p class="text-rose-400 text-xs font-bold tracking-widest uppercase opacity-60 group-hover:opacity-100 transition-opacity">Garden (DD_01 to DD_50)</p>
                         </div>
                     </div>
                 </button>
@@ -260,11 +250,15 @@
                 </button>
             </div>
         </nav>
+        
+        <div id="offline-indicator" class="fixed top-4 right-4 z-[70] hidden">
+            <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.6)]"></div>
+        </div>
 
     </div>
 
     <script>
-        const API_URL = "https://attendance-break-di.onrender.com";
+        const API_URL = "http://localhost:3000";
         
         let allStaff = [];
         let activeBreaks = [];
@@ -280,7 +274,6 @@
         let staffCacheData = [];
         let searchTimeout = null;
 
-        // --- INFINITE SCROLL OBSERVER ---
         const scrollObserver = new IntersectionObserver((entries) => {
             if (entries[0].isIntersecting && currentTab === 'staff') {
                 if (currentFilteredStaff.length > currentPage * itemsPerPage) {
@@ -294,16 +287,20 @@
             }
         }, { threshold: 0.1 });
 
-        // --- DATA LOGIC ---
         async function loadData() {
             try {
                 document.getElementById('loader-initial').innerHTML = '<div class="w-10 h-10 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>';
                 lucide.createIcons();
                 const staffRes = await fetch(`${API_URL}/staff`);
                 if(staffRes.ok) staffCacheData = await staffRes.json();
+                
+                // Fetch initial
                 await fetchData(true);
+                
+                // Polling at 5 seconds (SAFE FOR 10+ DEVICES)
                 refreshTimer = setInterval(() => fetchData(false), 5000);
                 minuteTimer = setInterval(() => updateTimeDisplays(), 1000);
+                
                 document.getElementById('loader-initial').innerHTML = '';
             } catch (err) {
                 document.getElementById('loader-initial').innerHTML = '<span class="text-rose-500 font-bold text-xs tracking-widest">OFFLINE</span>';
@@ -311,19 +308,35 @@
         }
 
         async function fetchData(isInitial = false) {
+            const offlineInd = document.getElementById('offline-indicator');
             try {
                 const [resStaff, resBreaks] = await Promise.all([
                     fetch(`${API_URL}/staff`),
                     fetch(`${API_URL}/active-breaks`)
                 ]);
-                allStaff = await resStaff.json();
-                activeBreaks = await resBreaks.json();
 
-                if (!document.activeElement || document.activeElement.id !== 'searchBar') {
-                    if (currentTab === 'active') updateUI(false);
-                    if (isInitial && currentTab === 'staff') updateUI(false);
+                // Only update if server says OK
+                if (resStaff.ok && resBreaks.ok) {
+                    const newStaff = await resStaff.json();
+                    const newBreaks = await resBreaks.json();
+                    
+                    if(Array.isArray(newStaff)) allStaff = newStaff;
+                    if(Array.isArray(newBreaks)) activeBreaks = newBreaks;
+
+                    offlineInd.classList.add('hidden'); 
+
+                    if (!document.activeElement || document.activeElement.id !== 'searchBar') {
+                        if (currentTab === 'active') updateUI(false);
+                        if (isInitial && currentTab === 'staff') updateUI(false);
+                    }
+                } else {
+                    console.warn("Server busy, skipping update.");
+                    offlineInd.classList.remove('hidden');
                 }
-            } catch (e) { console.error("Sync Error", e); }
+            } catch (e) { 
+                console.error("Sync Error - Data Preserved", e); 
+                offlineInd.classList.remove('hidden');
+            }
         }
 
         document.getElementById('searchBar').addEventListener('input', (e) => {
@@ -334,7 +347,7 @@
             searchTimeout = setTimeout(() => {
                 updateUI(true); 
                 spinner.classList.add('hidden');
-            }, 300);
+            }, 500);
         });
 
         function updateUI(fromSearch = false) {
@@ -397,15 +410,19 @@
             const endIndex = Math.min(startIndex + itemsPerPage, currentFilteredStaff.length);
             const batch = currentFilteredStaff.slice(startIndex, endIndex);
 
-            batch.forEach((person, index) => {
+            batch.forEach((person) => {
                 const breakData = activeBreaks.find(b => b.id == person.id && !b.timeIn);
                 const isOnBreak = !!breakData;
                 
-                // Color logic based on Area
                 const activeColorClass = currentArea === 'A' ? 'cyan' : 'rose';
                 const borderColor = isOnBreak ? 'border-white/5' : (currentArea === 'A' ? 'hover:border-cyan-500/40' : 'hover:border-rose-500/40');
 
-                let btnText = isOnBreak ? (breakData.area !== currentArea ? `នៅ Zone ${breakData.area}` : "កំពុងសម្រាក") : "ចេញសម្រាក";
+                let btnText = isOnBreak 
+                    ? (breakData.area !== currentArea 
+                        ? `នៅ Zone ${breakData.area}` 
+                        : `កំពុងសម្រាក`)
+                    : "ចេញសម្រាក";
+
                 const imgUrl = person.image || `https://ui-avatars.com/api/?background=random&color=fff&name=${encodeURIComponent(person.name_en)}`;
                 
                 const card = document.createElement('div');
@@ -446,7 +463,8 @@
 
             if (filteredList.length === 0) {
                 grid.innerHTML = '';
-                return emptyMsg.classList.remove('hidden');
+                emptyMsg.classList.remove('hidden');
+                return;
             }
             emptyMsg.classList.add('hidden');
 
@@ -468,11 +486,17 @@
                     card.className = "card-onyx p-5 flex flex-col items-center relative animate-fade-in";
                     
                     card.innerHTML = `
-                        <div class="w-full">
-                            <div class="flex items-center w-full gap-4 mb-4">
+                        <div class="w-full relative">
+                            <div class="absolute top-0 right-0">
+                                <span class="px-2 py-1 rounded-md bg-cyan-500/10 border border-cyan-500/20 text-cyan-400 text-[10px] font-bold font-mono tracking-wider shadow-[0_0_10px_rgba(34,211,238,0.2)]">
+                                    ${item.card}
+                                </span>
+                            </div>
+
+                            <div class="flex items-center w-full gap-4 mb-4 mt-2">
                                 <img src="${imgUrl}" class="w-12 h-12 rounded-full object-cover border border-white/10 bg-black shadow-md">
                                 <div class="flex-1 min-w-0">
-                                    <h3 class="font-bold text-white text-sm truncate font-khmer">${khName}</h3>
+                                    <h3 class="font-bold text-white text-sm truncate font-khmer pr-12">${khName}</h3>
                                     <div class="flex items-center gap-1.5 text-[10px] text-slate-400 mt-0.5">
                                         <i data-lucide="clock" class="w-3 h-3 text-cyan-400"></i>
                                         <span>${item.timeOut}</span>
@@ -533,7 +557,32 @@
             return Math.floor((now - breakTime) / 60000);
         }
 
-        // --- NAVIGATION ---
+        function getNextCard(area) {
+            const min_num = area === 'A' ? 51 : 1;
+            const max_num = area === 'A' ? 150 : 50;
+            const used = new Set();
+
+            activeBreaks.forEach(b => {
+                if (b.area === area && b.card) {
+                    try {
+                        const num_str = b.card.split('_')[1];
+                        const num = parseInt(num_str);
+                        if (!isNaN(num) && min_num <= num <= max_num) {
+                            used.add(num);
+                        }
+                    } catch (e) {}
+                }
+            });
+
+            for (let i = min_num; i <= max_num; i++) {
+                if (!used.has(i)) {
+                    const formatted = (area === 'B' && i < 10) ? '0' + i : i.toString();
+                    return `DD_${formatted}`;
+                }
+            }
+            return null;
+        }
+
         function enterArea(area) {
             if(allStaff.length === 0) return;
             currentArea = area;
@@ -612,7 +661,6 @@
             }
         }
 
-        // --- ALERTS ---
         const toastConfig = Swal.mixin({
             toast: true,
             position: 'bottom-end',
@@ -625,10 +673,12 @@
         });
 
         function confirmStartBreak(person) {
-            const color = currentArea === 'A' ? '#22d3ee' : '#fb7185'; 
+            const nextCard = getNextCard(currentArea);
+            const cardDisplay = nextCard ? nextCard : ' (No card available)';
             Swal.fire({
                 title: 'Start Break?',
-                html: `<h3 class="text-xl font-bold text-white font-khmer mt-2">${person.name_kh || person.name_en}</h3>`,
+                html: `<h3 class="text-xl font-bold text-white font-khmer mt-2">${person.name_kh || person.name_en}</h3>
+                       <p class="text-sm text-slate-300 mt-4 font-khmer">Card: <span class="font-bold text-cyan-400">${cardDisplay}</span></p>`,
                 showCancelButton: true,
                 confirmButtonText: 'OK',
                 cancelButtonText: 'Cancel',
@@ -649,10 +699,10 @@
                 background: '#18181b'
             }).then((result) => {
                 if(result.isConfirmed) {
-                    const card = document.getElementById(`break-card-${id}`);
-                    if(card) {
-                        card.style.transform = "scale(0.9) translateY(-10px)";
-                        card.style.opacity = "0";
+                    const cardEl = document.getElementById(`break-card-${id}`);
+                    if(cardEl) {
+                        cardEl.style.transform = "scale(0.9) translateY(-10px)";
+                        cardEl.style.opacity = "0";
                     }
                     setTimeout(() => submitTimeIn(id, name), 300);
                 }
@@ -660,29 +710,50 @@
         }
 
         async function submitBreak(person) {
+            const card = getNextCard(currentArea);
+            if (!card) {
+                toastConfig.fire({ icon: 'error', title: 'No more cards available in this zone!' });
+                return;
+            }
             try {
-                await fetch(`${API_URL}/break`, {
+                const res = await fetch(`${API_URL}/break`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ id: person.id, name: person.name_kh || person.name_en, group: person.group, area: currentArea })
+                    body: JSON.stringify({ 
+                        id: person.id, 
+                        name: person.name_kh || person.name_en, 
+                        group: person.group, 
+                        area: currentArea,
+                        card: card 
+                    })
                 });
+                
+                if(!res.ok) throw new Error("Failed");
+
+                // Immediately force update
                 await fetchData(true);
-                toastConfig.fire({ icon: 'success', title: 'Success' });
+                
+                toastConfig.fire({ icon: 'success', title: `Break started - Card ${card}` });
                 document.getElementById('searchBar').value = '';
                 updateUI();
-            } catch (e) { toastConfig.fire({ icon: 'error', title: 'Error' }); }
+            } catch (e) { 
+                toastConfig.fire({ icon: 'error', title: 'Error or Slow Network' }); 
+            }
         }
 
         async function submitTimeIn(id, name) {
             try {
-                await fetch(`${API_URL}/timein`, {
+                const res = await fetch(`${API_URL}/timein`, {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({ id: id })
                 });
+
+                if(!res.ok) throw new Error("Failed");
+
                 await fetchData(true);
-                toastConfig.fire({ icon: 'success', title: 'Welcome Back' });
-            } catch (e) { toastConfig.fire({ icon: 'error', title: 'Error' }); }
+                toastConfig.fire({ icon: 'success', title: 'Welcome Back!' });
+            } catch (e) { toastConfig.fire({ icon: 'error', title: 'Error or Slow Network' }); }
         }
         
         loadData();
