@@ -397,37 +397,174 @@ app.get('/report', async (req, res) => {
             sheets.spreadsheets.values.get({ 
                 spreadsheetId: WRITE_SPREADSHEET_ID, 
                 range: `'${sheetName}'!A:I` 
-            }).then(res => res.data.values || [])
+            }).then(res => ({ name: sheetName, rows: res.data.values || [] }))
         );
 
         const results = await Promise.all(fetchPromises);
         let aggregatedRows = [];
-        results.forEach(sheetRows => { aggregatedRows = aggregatedRows.concat(sheetRows.slice(1)); });
         
-        const allData = aggregatedRows.map((row) => {
-            const id = row[0] ? String(row[0]).trim() : null;
-            const name = row[1];
-            let imgUrl = '';
-            if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
-            else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
+        // Keep track of which sheet each row came from for deletion
+        results.forEach(sheetData => { 
+            const sheetRows = sheetData.rows.slice(1).map((r, idx) => ({
+                ...r,
+                _sheetName: sheetData.name,
+                _rowIndex: idx + 2 // +1 for header, +1 for 0-index
+            }));
+            
+            // Map row array to object
+            const mappedRows = sheetRows.map(row => {
+                const id = row[0] ? String(row[0]).trim() : null;
+                const name = row[1];
+                let imgUrl = '';
+                if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
+                else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
 
-            return {
-                id: id || 'Unknown', 
-                name: name || 'Unknown', 
-                group: row[2],
-                timeOut: row[3],
-                timeIn: row[4],
-                area: row[5],
-                date: row[6],
-                overtime: row[7],
-                image: imgUrl
-            };
+                return {
+                    id: id || 'Unknown', 
+                    name: name || 'Unknown', 
+                    group: row[2],
+                    timeOut: row[3],
+                    timeIn: row[4],
+                    area: row[5],
+                    date: row[6],
+                    overtime: row[7],
+                    image: imgUrl,
+                    _sheetName: row._sheetName, // Critical for delete
+                    _rowIndex: row._rowIndex    // Critical for delete
+                };
+            });
+            
+            aggregatedRows = aggregatedRows.concat(mappedRows);
         });
-
-        res.json({ raw: allData });
+        
+        res.json({ raw: aggregatedRows });
     } catch (error) {
         console.error("Report Error:", error);
         res.json({ raw: [] });
+    }
+});
+
+// === DELETE SHEETS ENDPOINT (ARRAY SUPPORT) ===
+app.post('/delete-sheets', async (req, res) => {
+    const { sheetNames } = req.body;
+    
+    if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) {
+        return res.status(400).json({ error: 'Missing sheet names' });
+    }
+
+    try {
+        await waitForLock(); // Acquire Lock
+
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+
+        // Get all existing sheets meta data to get Sheet IDs
+        const response = await sheets.spreadsheets.get({
+            spreadsheetId: WRITE_SPREADSHEET_ID
+        });
+        
+        const allSheets = response.data.sheets;
+        const sheetsToDelete = allSheets.filter(s => sheetNames.includes(s.properties.title));
+
+        if (sheetsToDelete.length === 0) {
+            releaseLock();
+            return res.json({ status: 'success', message: 'No matching sheets found to delete' });
+        }
+
+        // IMPORTANT: Google Sheets API requires at least one sheet to remain.
+        if (sheetsToDelete.length === allSheets.length) {
+             const newSheetTitle = `New Sheet ${Date.now()}`;
+             await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                resource: { requests: [{ addSheet: { properties: { title: newSheetTitle } } }] }
+            });
+        }
+
+        const deleteRequests = sheetsToDelete.map(s => ({
+            deleteSheet: { sheetId: s.properties.sheetId }
+        }));
+
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: WRITE_SPREADSHEET_ID,
+            resource: { requests: deleteRequests }
+        });
+
+        BREAKS_CACHE.timestamp = 0; // Clear cache
+        io.emit('data_updated');
+        res.json({ status: 'success', deletedCount: sheetsToDelete.length });
+
+    } catch (err) {
+        console.error("Delete Error:", err);
+        res.status(500).json({ status: 'error', message: err.message });
+    } finally {
+        releaseLock();
+    }
+});
+
+// === NEW: DELETE SPECIFIC ROWS ENDPOINT ===
+app.post('/delete-specific-rows', async (req, res) => {
+    const { itemsToDelete } = req.body; // Expects array of { sheetName, rowIndex }
+    if (!itemsToDelete || !Array.isArray(itemsToDelete) || itemsToDelete.length === 0) {
+        return res.status(400).json({ error: 'Missing items to delete' });
+    }
+
+    try {
+        await waitForLock();
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+
+        const sheetsMap = {};
+        const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+        
+        const titleToId = {};
+        spreadsheetMeta.data.sheets.forEach(s => {
+            titleToId[s.properties.title] = s.properties.sheetId;
+        });
+
+        itemsToDelete.forEach(item => {
+            const sheetId = titleToId[item.sheetName];
+            if (sheetId) {
+                if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
+                sheetsMap[sheetId].push(item.rowIndex - 1); 
+            }
+        });
+
+        const requests = [];
+
+        for (const [sheetId, indices] of Object.entries(sheetsMap)) {
+            // Sort Descending
+            indices.sort((a, b) => b - a);
+            
+            indices.forEach(idx => {
+                requests.push({
+                    deleteDimension: {
+                        range: {
+                            sheetId: parseInt(sheetId),
+                            dimension: "ROWS",
+                            startIndex: idx,
+                            endIndex: idx + 1
+                        }
+                    }
+                });
+            });
+        }
+
+        if (requests.length > 0) {
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                resource: { requests }
+            });
+        }
+
+        BREAKS_CACHE.timestamp = 0;
+        io.emit('data_updated');
+        res.json({ status: 'success' });
+
+    } catch (err) {
+        console.error("Row Delete Error:", err);
+        res.status(500).json({ status: 'error', message: err.message });
+    } finally {
+        releaseLock();
     }
 });
 
@@ -443,19 +580,13 @@ app.post('/break', async (req, res) => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         
-        // 2. Fetch FRESH data (Guarantee latest state)
-        // We force fetch from Google Sheets inside the lock.
-        // This is slow (~500ms) but guarantees accuracy.
         const activeBreaks = await getFreshBreaks(sheets);
         
-        // 3. CRITICAL: Check if user is ALREADY on break to prevent duplicates
         const isAlreadyOnBreak = activeBreaks.some(b => String(b.id) === String(id));
 
         if (isAlreadyOnBreak) {
             console.log(`Duplicate blocked for ID: ${id}`);
             releaseLock(); 
-            // Return success so frontend stops spinning, but DO NOT WRITE.
-            // Return existing break info if possible, or just success.
             return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
         }
         
@@ -481,9 +612,8 @@ app.post('/break', async (req, res) => {
         });
 
         BREAKS_CACHE.timestamp = 0; 
-        io.emit('data_updated'); // Notify all devices
+        io.emit('data_updated'); 
         
-        // 4. RETURN THE ASSIGNED CARD IN RESPONSE
         res.json({ status: 'success', timeOut: timeStr, card: card });
 
     } catch (err) {
@@ -528,7 +658,6 @@ app.post('/timein', async (req, res) => {
 
         if (rowIndex === -1) {
             releaseLock();
-            // If already timed in, return success so frontend updates
             return res.json({ status: 'success', message: 'Already timed in' });
         }
 
