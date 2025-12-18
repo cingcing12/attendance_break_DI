@@ -109,6 +109,7 @@
         #scroll-sentinel { height: 20px; width: 100%; opacity: 0; }
         ::-webkit-scrollbar { width: 0px; background: transparent; }
 
+        /* SweetAlert2 Dark Theme Overrides */
         div:where(.swal2-container) div:where(.swal2-popup) {
             background: #18181b !important;
             border: 1px solid #333;
@@ -676,7 +677,7 @@
             toast: true,
             position: 'bottom-end',
             showConfirmButton: false,
-            timer: 4000,
+            timer: 5000,
             timerProgressBar: true,
             background: '#18181b',
             color: '#fff',
@@ -722,7 +723,7 @@
         }
 
         // ---------------------------------------------------------
-        //  UPDATED: USES SERVER RESPONSE FOR CARD
+        //  UPDATED: USES TOAST FOR SUCCESS & DISPLAYS CARD
         // ---------------------------------------------------------
         async function submitBreak(person) {
             try {
@@ -742,16 +743,14 @@
 
                 await fetchData(true);
                 
-                // SHOW THE ACTUAL ASSIGNED CARD FROM THE SERVER
-                Swal.fire({
-                    title: 'Break Started!',
-                    html: `<h1 class="text-4xl font-black text-cyan-400 my-4">${data.card}</h1>
-                           <p class="text-slate-400 text-sm">Please take this card.</p>`,
+                // SHOW SUCCESS TOAST AT BOTTOM RIGHT
+                toastConfig.fire({
                     icon: 'success',
-                    background: '#18181b',
-                    confirmButtonColor: '#22d3ee',
-                    timer: 5000,
-                    timerProgressBar: true
+                    title: 'Break Started',
+                    html: `<div class="flex flex-col items-start mt-1">
+                             <span class="text-slate-400 text-xs">Assigned Card:</span>
+                             <span class="text-2xl font-black text-cyan-400 font-mono mt-1">${data.card}</span>
+                           </div>`
                 });
 
                 document.getElementById('searchBar').value = '';
