@@ -210,7 +210,7 @@
                     <p class="text-slate-500 font-khmer text-lg">No Results Found</p>
                 </div>
 
-                <div id="staffGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"></div>
+                <div id="staffGrid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"></div>
                 
                 <div id="scroll-sentinel" class="mt-8 flex justify-center">
                     <div id="scroll-loader" class="hidden w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
@@ -232,7 +232,7 @@
                     <i data-lucide="coffee" class="w-12 h-12 text-slate-500 mb-4"></i>
                     <p class="text-slate-500 font-khmer text-lg">System Idle</p>
                 </div>
-                <div id="activeGrid" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"></div>
+                <div id="activeGrid" class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6"></div>
             </div>
 
         </main>
@@ -476,7 +476,7 @@
         }
 
         // ============================================
-        //  RENDER ACTIVE BREAKS
+        //  RENDER ACTIVE BREAKS (FIXED FONT SIZES)
         // ============================================
         function renderActiveBreaks(list) {
             const grid = document.getElementById('activeGrid');
@@ -534,12 +534,12 @@
                                 <div class="bg-cyan-500/5 border border-cyan-500/20 rounded-xl p-2.5 flex flex-col items-center justify-center relative overflow-hidden group/card">
                                     <div class="absolute inset-0 bg-cyan-500/10 blur-xl opacity-0 group-hover/card:opacity-100 transition-opacity"></div>
                                     <span class="text-[9px] text-cyan-400/70 font-bold tracking-widest uppercase mb-0.5">Card</span>
-                                    <span class="text-xl font-black text-cyan-400 font-mono tracking-tight relative z-10 truncate max-w-full">${cardDisplay}</span>
+                                    <span class="text-sm md:text-xl font-black text-cyan-400 font-mono tracking-tight relative z-10 w-full text-center truncate">${cardDisplay}</span>
                                 </div>
 
                                 <div class="bg-white/5 border border-white/10 rounded-xl p-2.5 flex flex-col items-center justify-center relative overflow-hidden">
                                     <span class="text-[9px] text-slate-500 font-bold tracking-widest uppercase mb-0.5">Duration</span>
-                                    <span id="time-val-${item.id}" class="text-xl font-black text-white font-mono tracking-tight">00m</span>
+                                    <span id="time-val-${item.id}" class="text-sm md:text-xl font-black text-white font-mono tracking-tight">00m</span>
                                 </div>
                             </div>
 
@@ -592,32 +592,6 @@
             breakTime.setHours(hours, parseInt(minutes), 0);
             if (breakTime > now) breakTime.setDate(breakTime.getDate() - 1);
             return Math.floor((now - breakTime) / 60000);
-        }
-
-        function getNextCard(area) {
-            const min_num = area === 'A' ? 51 : 1;
-            const max_num = area === 'A' ? 150 : 50;
-            const used = new Set();
-
-            activeBreaks.forEach(b => {
-                if (b.area === area && b.card) {
-                    try {
-                        const num_str = b.card.split('_')[1];
-                        const num = parseInt(num_str);
-                        if (!isNaN(num) && min_num <= num <= max_num) {
-                            used.add(num);
-                        }
-                    } catch (e) {}
-                }
-            });
-
-            for (let i = min_num; i <= max_num; i++) {
-                if (!used.has(i)) {
-                    const formatted = (area === 'B' && i < 10) ? '0' + i : i.toString();
-                    return `DD_${formatted}`;
-                }
-            }
-            return null;
         }
 
         function enterArea(area) {
@@ -702,20 +676,21 @@
             toast: true,
             position: 'bottom-end',
             showConfirmButton: false,
-            timer: 3000,
+            timer: 4000,
             timerProgressBar: true,
             background: '#18181b',
             color: '#fff',
             customClass: { popup: 'border border-white/10 rounded-xl' }
         });
 
+        // ---------------------------------------------------------
+        //  UPDATED: NO LONGER GUESSES CARD NUMBER HERE
+        // ---------------------------------------------------------
         function confirmStartBreak(person) {
-            const nextCard = getNextCard(currentArea);
-            const cardDisplay = nextCard ? nextCard : ' (No card available)';
             Swal.fire({
                 title: 'Start Break?',
                 html: `<h3 class="text-xl font-bold text-white font-khmer mt-2">${person.name_kh || person.name_en}</h3>
-                       <p class="text-sm text-slate-300 mt-4 font-khmer">Card: <span class="font-bold text-cyan-400">${cardDisplay}</span></p>`,
+                       <p class="text-sm text-slate-300 mt-4 font-khmer">Click OK to get your card.</p>`,
                 showCancelButton: true,
                 confirmButtonText: 'OK',
                 cancelButtonText: 'Cancel',
@@ -746,12 +721,10 @@
             });
         }
 
+        // ---------------------------------------------------------
+        //  UPDATED: USES SERVER RESPONSE FOR CARD
+        // ---------------------------------------------------------
         async function submitBreak(person) {
-            const card = getNextCard(currentArea);
-            if (!card) {
-                toastConfig.fire({ icon: 'error', title: 'No more cards available in this zone!' });
-                return;
-            }
             try {
                 const res = await fetch(`${API_URL}/break`, {
                     method: 'POST',
@@ -760,20 +733,31 @@
                         id: person.id, 
                         name: person.name_kh || person.name_en, 
                         group: person.group, 
-                        area: currentArea,
-                        card: card 
+                        area: currentArea 
                     })
                 });
                 
-                if(!res.ok) throw new Error("Failed");
+                const data = await res.json();
+                if(data.status !== 'success') throw new Error(data.error || "Failed");
 
                 await fetchData(true);
                 
-                toastConfig.fire({ icon: 'success', title: `Break started - Card ${card}` });
+                // SHOW THE ACTUAL ASSIGNED CARD FROM THE SERVER
+                Swal.fire({
+                    title: 'Break Started!',
+                    html: `<h1 class="text-4xl font-black text-cyan-400 my-4">${data.card}</h1>
+                           <p class="text-slate-400 text-sm">Please take this card.</p>`,
+                    icon: 'success',
+                    background: '#18181b',
+                    confirmButtonColor: '#22d3ee',
+                    timer: 5000,
+                    timerProgressBar: true
+                });
+
                 document.getElementById('searchBar').value = '';
                 updateUI();
             } catch (e) { 
-                toastConfig.fire({ icon: 'error', title: 'Error or Slow Network' }); 
+                toastConfig.fire({ icon: 'error', title: e.message || 'Error or Slow Network' }); 
             }
         }
 

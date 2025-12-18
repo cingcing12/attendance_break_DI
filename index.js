@@ -3,15 +3,16 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
-const http = require('http'); // Import HTTP
-const { Server } = require("socket.io"); // Import Socket.io
+const http = require('http'); 
+const { Server } = require("socket.io"); 
 
 const app = express();
-const server = http.createServer(app); // Create HTTP server
-// Setup Socket.io with CORS
+const server = http.createServer(app); 
+
+// Allow all origins
 const io = new Server(server, {
     cors: {
-        origin: "*", // Allow connections from any device
+        origin: "*", 
         methods: ["GET", "POST"]
     }
 });
@@ -42,11 +43,11 @@ const auth = new google.auth.GoogleAuth({
 // CACHING & CONCURRENCY
 // ==========================
 let STAFF_CACHE = { data: null, timestamp: 0, duration: 10 * 60 * 1000 };
-let BREAKS_CACHE = { data: null, timestamp: 0, duration: 2 * 1000 }; // Short cache for reads
+let BREAKS_CACHE = { data: null, timestamp: 0, duration: 2 * 1000 }; 
 let fetchStaffPromise = null;
 let fetchBreaksPromise = null;
 
-// WRITE LOCK: Prevents multiple devices from writing to Google Sheets at the exact same time
+// WRITE LOCK SYSTEM
 let isWriting = false; 
 const waitForLock = () => {
     return new Promise(resolve => {
@@ -55,7 +56,7 @@ const waitForLock = () => {
                 isWriting = true;
                 resolve();
             } else {
-                setTimeout(check, 100); // Check again in 100ms
+                setTimeout(check, 50); // Check every 50ms
             }
         };
         check();
@@ -250,7 +251,7 @@ async function getCachedStaffData(sheets) {
     return fetchStaffPromise;
 }
 
-// Force fetch fresh data for concurrency checks
+// FORCE FETCH FRESH DATA (No Cache) - Used during writes
 async function getFreshBreaks(sheets) {
     const sheet = await ensureTodaySheet(sheets);
     const r = await sheets.spreadsheets.values.get({ 
@@ -259,17 +260,17 @@ async function getFreshBreaks(sheets) {
     });
     const rows = r.data.values || [];
     
-    // We only need minimal data for logic checking
+    // Return objects to check easily
     return rows.slice(1).map((row) => ({
-        id: row[0],
+        id: row[0] ? String(row[0]).trim() : null,
         timeOut: row[3],
         timeIn: row[4],
         area: row[5],
         card: row[8]
-    })).filter(r => r.timeOut && !r.timeIn);
+    })).filter(r => r.timeOut && !r.timeIn); // Only return currently active breaks
 }
 
-// Cached version for frontend display
+// CACHED FETCH - Used for display
 async function getCachedBreaks(sheets) {
     const now = Date.now();
     if (BREAKS_CACHE.data && (now - BREAKS_CACHE.timestamp < BREAKS_CACHE.duration)) {
@@ -323,7 +324,7 @@ async function getCachedBreaks(sheets) {
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - Multi-Device Ready'));
+app.get('/', (req, res) => res.send('Staff Hub API - Concurrency Safe v2'));
 
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
@@ -430,21 +431,33 @@ app.get('/report', async (req, res) => {
     }
 });
 
-// === CONCURRENCY SAFE WRITE ENDPOINTS ===
+// === WRITE ENDPOINTS (STRICT CONCURRENCY) ===
 
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
     if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
 
     try {
-        // 1. Wait for Lock (Prevents multiple devices from writing at the same time)
-        await waitForLock();
+        await waitForLock(); // 1. Acquire Lock
 
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         
-        // 2. Fetch Fresh Data (Do not use cache here to avoid duplication)
+        // 2. Fetch FRESH data (Guarantee latest state)
+        // We force fetch from Google Sheets inside the lock.
+        // This is slow (~500ms) but guarantees accuracy.
         const activeBreaks = await getFreshBreaks(sheets);
+        
+        // 3. CRITICAL: Check if user is ALREADY on break to prevent duplicates
+        const isAlreadyOnBreak = activeBreaks.some(b => String(b.id) === String(id));
+
+        if (isAlreadyOnBreak) {
+            console.log(`Duplicate blocked for ID: ${id}`);
+            releaseLock(); 
+            // Return success so frontend stops spinning, but DO NOT WRITE.
+            // Return existing break info if possible, or just success.
+            return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
+        }
         
         const card = getNextAvailableCard(activeBreaks, area);
         if (!card) {
@@ -467,16 +480,17 @@ app.post('/break', async (req, res) => {
             resource: { values }
         });
 
-        // 3. Clear Cache and Notify All Clients
         BREAKS_CACHE.timestamp = 0; 
-        io.emit('data_updated'); // <--- Real-time Trigger
-        res.json({ status: 'success', timeOut: timeStr, card });
+        io.emit('data_updated'); // Notify all devices
+        
+        // 4. RETURN THE ASSIGNED CARD IN RESPONSE
+        res.json({ status: 'success', timeOut: timeStr, card: card });
 
     } catch (err) {
         console.error(err);
         res.status(500).json({ status: 'error' });
     } finally {
-        releaseLock(); // Always release lock
+        releaseLock(); // Release Lock
     }
 });
 
@@ -485,13 +499,12 @@ app.post('/timein', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'ID required' });
 
     try {
-        await waitForLock(); // 1. Wait Lock
+        await waitForLock(); // Acquire Lock
 
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         const sheet = getTodaySheetName();
 
-        // 2. Fetch and find row
         const r = await sheets.spreadsheets.values.get({ 
             spreadsheetId: WRITE_SPREADSHEET_ID, 
             range: `'${sheet}'!A:I` 
@@ -502,8 +515,10 @@ app.post('/timein', async (req, res) => {
         let outTime = '';
         const targetId = String(id).trim();
 
+        // Find the active row
         for (let i = rows.length - 1; i >= 1; i--) {
             const rowId = rows[i][0] ? String(rows[i][0]).trim() : '';
+            // Must match ID and have NO timeIn
             if (rowId === targetId && !rows[i][4]) {
                 rowIndex = i + 1;
                 outTime = rows[i][3];
@@ -513,7 +528,8 @@ app.post('/timein', async (req, res) => {
 
         if (rowIndex === -1) {
             releaseLock();
-            return res.status(404).json({ status: 'not_found' });
+            // If already timed in, return success so frontend updates
+            return res.json({ status: 'success', message: 'Already timed in' });
         }
 
         const now = getCambodiaDate();
@@ -532,9 +548,8 @@ app.post('/timein', async (req, res) => {
             }
         });
 
-        // 3. Clear Cache and Notify
         BREAKS_CACHE.timestamp = 0;
-        io.emit('data_updated'); // <--- Real-time Trigger
+        io.emit('data_updated'); 
         res.json({ status: 'success', timeIn: timeInStr });
     } catch (err) {
         console.error(err);
@@ -544,15 +559,14 @@ app.post('/timein', async (req, res) => {
     }
 });
 
-// SOCKET CONNECTION LOG
+// SOCKET LOGGING
 io.on('connection', (socket) => {
-    console.log('New device connected:', socket.id);
+    console.log('Device connected:', socket.id);
     socket.on('disconnect', () => {
         console.log('Device disconnected:', socket.id);
     });
 });
 
-// Change app.listen to server.listen
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on port http://localhost:${PORT}`);
 });
