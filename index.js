@@ -34,6 +34,7 @@ const READ_SHEET_NAME = 'DB_DUC_BKU';
 
 const WRITE_SPREADSHEET_ID = '1pzOMgXkyAuLTcU-2P7nXryuELhP8f29nHvLXEErpYxw'; 
 const DI_SHEET_NAME = 'Sheet3';
+const SETTINGS_SHEET_NAME = 'CardSettings'; // The tab we want to create
 
 // ==========================
 // AUTH
@@ -48,8 +49,11 @@ const auth = new google.auth.GoogleAuth({
 // ==========================
 let STAFF_CACHE = { data: null, timestamp: 0, duration: 10 * 60 * 1000 };
 let BREAKS_CACHE = { data: null, timestamp: 0, duration: 2 * 1000 }; 
+let SETTINGS_CACHE = { data: null, timestamp: 0, duration: 60 * 60 * 1000 }; 
+
 let fetchStaffPromise = null;
 let fetchBreaksPromise = null;
+let fetchSettingsPromise = null;
 
 // WRITE LOCK SYSTEM
 let isWriting = false; 
@@ -60,7 +64,7 @@ const waitForLock = () => {
                 isWriting = true;
                 resolve();
             } else {
-                setTimeout(check, 50); // Check every 50ms
+                setTimeout(check, 50); 
             }
         };
         check();
@@ -118,28 +122,27 @@ function safeKey(str) {
     return str ? String(str).trim().toUpperCase() : '';
 }
 
-function getNextAvailableCard(activeBreaks, area) {
-    const min = area === 'A' ? 51 : 1;
-    const max = area === 'A' ? 150 : 50;
-    const used = new Set();
-
-    activeBreaks.forEach(b => {
-        if (b.area === area && b.card) {
-            try {
-                const numStr = b.card.split('_')[1];
-                const num = parseInt(numStr);
-                if (!isNaN(num) && num >= min && num <= max) used.add(num);
-            } catch(e) {}
-        }
+// === DYNAMIC CARD ASSIGNMENT LOGIC ===
+function getNextAvailableCard(activeBreaks, cardSettings, area) {
+    // 1. Get all configured cards for this area (A or B)
+    const availableInZone = cardSettings.filter(c => c.zone === area);
+    
+    // 2. Sort them (Numeric sort for DD_01, DD_02 etc)
+    availableInZone.sort((a, b) => {
+        const numA = parseInt(a.cardId.replace(/\D/g, '')) || 0;
+        const numB = parseInt(b.cardId.replace(/\D/g, '')) || 0;
+        return numA - numB;
     });
 
-    for (let i = min; i <= max; i++) {
-        if (!used.has(i)) {
-            const formatted = (area === 'B' && i < 10) ? '0' + i : i.toString();
-            return `DD_${formatted}`;
+    // 3. Find the first one NOT currently in use
+    const usedCards = new Set(activeBreaks.map(b => b.card));
+
+    for (const card of availableInZone) {
+        if (!usedCards.has(card.cardId)) {
+            return card.cardId;
         }
     }
-    return null;
+    return null; // Full
 }
 
 async function ensureTodaySheet(sheets) {
@@ -170,10 +173,63 @@ async function ensureTodaySheet(sheets) {
     }
 }
 
+// === UPDATED: ROBUST SHEET CREATION LOGIC ===
+// Instead of trying to read data, check Metadata list. Much safer.
+async function ensureCardSettingsSheet(sheets) {
+    try {
+        // 1. Get Spreadsheet Metadata (List of ALL sheets)
+        const metadata = await sheets.spreadsheets.get({
+            spreadsheetId: WRITE_SPREADSHEET_ID
+        });
+
+        // 2. Check if "CardSettings" is in the list
+        const sheetExists = metadata.data.sheets.some(
+            s => s.properties.title === SETTINGS_SHEET_NAME
+        );
+
+        if (!sheetExists) {
+            console.log(`🛠️ Sheet '${SETTINGS_SHEET_NAME}' not found. Creating...`);
+            
+            // 3. Create the Sheet
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                resource: {
+                    requests: [{
+                        addSheet: { properties: { title: SETTINGS_SHEET_NAME } }
+                    }]
+                }
+            });
+
+            // 4. Populate with Defaults (DD_01 - DD_150)
+            const header = [['CardID', 'Zone']];
+            const rows = [];
+            
+            // DD_01 to DD_50 -> Zone B
+            for(let i=1; i<=50; i++) rows.push([`DD_${String(i).padStart(2,'0')}`, 'B']);
+            // DD_51 to DD_150 -> Zone A
+            for(let i=51; i<=150; i++) rows.push([`DD_${String(i).padStart(2,'0')}`, 'A']);
+
+            await sheets.spreadsheets.values.update({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                range: `'${SETTINGS_SHEET_NAME}'!A1`,
+                valueInputOption: 'RAW',
+                resource: { values: [...header, ...rows] }
+            });
+            
+            console.log(`✅ SUCCESS: '${SETTINGS_SHEET_NAME}' created and populated with 150 cards.`);
+        } else {
+            console.log(`✅ Verified: '${SETTINGS_SHEET_NAME}' already exists.`);
+        }
+    } catch (e) {
+        console.error("❌ CRITICAL ERROR in ensureCardSettingsSheet:", e);
+    }
+}
+
 // ==========================
 // CACHED FETCHERS
 // ==========================
 
+// ... (getCachedStaffData remains exactly the same)
 async function getCachedStaffData(sheets) {
     const now = Date.now();
     if (STAFF_CACHE.data && (now - STAFF_CACHE.timestamp < STAFF_CACHE.duration)) {
@@ -255,7 +311,7 @@ async function getCachedStaffData(sheets) {
     return fetchStaffPromise;
 }
 
-// FORCE FETCH FRESH DATA (No Cache) - Used during writes
+// ... (getFreshBreaks remains exactly the same)
 async function getFreshBreaks(sheets) {
     const sheet = await ensureTodaySheet(sheets);
     const r = await sheets.spreadsheets.values.get({ 
@@ -264,17 +320,16 @@ async function getFreshBreaks(sheets) {
     });
     const rows = r.data.values || [];
     
-    // Return objects to check easily
     return rows.slice(1).map((row) => ({
         id: row[0] ? String(row[0]).trim() : null,
         timeOut: row[3],
         timeIn: row[4],
         area: row[5],
         card: row[8]
-    })).filter(r => r.timeOut && !r.timeIn); // Only return currently active breaks
+    })).filter(r => r.timeOut && !r.timeIn);
 }
 
-// CACHED FETCH - Used for display
+// ... (getCachedBreaks remains exactly the same)
 async function getCachedBreaks(sheets) {
     const now = Date.now();
     if (BREAKS_CACHE.data && (now - BREAKS_CACHE.timestamp < BREAKS_CACHE.duration)) {
@@ -324,16 +379,48 @@ async function getCachedBreaks(sheets) {
     return fetchBreaksPromise;
 }
 
+// === CACHED SETTINGS FETCHER ===
+async function getCachedSettings(sheets) {
+    const now = Date.now();
+    if (SETTINGS_CACHE.data && (now - SETTINGS_CACHE.timestamp < SETTINGS_CACHE.duration)) {
+        return SETTINGS_CACHE.data;
+    }
+    if (fetchSettingsPromise) return fetchSettingsPromise;
+
+    fetchSettingsPromise = (async () => {
+        try {
+            await ensureCardSettingsSheet(sheets); // Ensures sheet exists first
+            const r = await sheets.spreadsheets.values.get({ 
+                spreadsheetId: WRITE_SPREADSHEET_ID, 
+                range: `'${SETTINGS_SHEET_NAME}'!A:B` 
+            });
+            const rows = r.data.values || [];
+            
+            const settings = rows.slice(1).map(r => ({
+                cardId: r[0],
+                zone: r[1]
+            })).filter(s => s.cardId && s.zone);
+
+            SETTINGS_CACHE = { data: settings, timestamp: Date.now(), duration: SETTINGS_CACHE.duration };
+            return settings;
+        } catch (e) {
+            console.error("Settings fetch failed", e);
+            return SETTINGS_CACHE.data || [];
+        } finally {
+            fetchSettingsPromise = null;
+        }
+    })();
+    return fetchSettingsPromise;
+}
+
 // ==========================
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - Concurrency Safe v2'));
+app.get('/', (req, res) => res.send('Staff Hub API - with Robust Card Creation'));
 
-// UPDATED LOGIN ROUTE
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
-    // Check against the configured credentials
     if(email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
         res.json({ success: true, token: 'admin_secret_token_123' });
     } else {
@@ -345,21 +432,11 @@ app.get('/available-sheets', async (req, res) => {
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        
-        const response = await sheets.spreadsheets.get({
-            spreadsheetId: WRITE_SPREADSHEET_ID
-        });
-
+        const response = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
         const sheetsList = response.data.sheets;
-        const dateSheets = sheetsList
-            .map(s => s.properties.title)
-            .filter(title => /^\d{2}-\d{2}-\d{4}$/.test(title));
-
+        const dateSheets = sheetsList.map(s => s.properties.title).filter(title => /^\d{2}-\d{2}-\d{4}$/.test(title));
         res.json(dateSheets);
-    } catch (error) {
-        console.error("Error fetching sheets:", error);
-        res.status(500).json([]);
-    }
+    } catch (error) { res.status(500).json([]); }
 });
 
 app.get('/staff', async (req, res) => {
@@ -368,9 +445,7 @@ app.get('/staff', async (req, res) => {
         const sheets = google.sheets({ version: 'v4', auth: client });
         const cache = await getCachedStaffData(sheets);
         res.json(cache.data);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/active-breaks', async (req, res) => {
@@ -379,16 +454,12 @@ app.get('/active-breaks', async (req, res) => {
         const sheets = google.sheets({ version: 'v4', auth: client });
         const data = await getCachedBreaks(sheets);
         res.json(data);
-    } catch (e) {
-        res.status(500).json([]);
-    }
+    } catch (e) { res.status(500).json([]); }
 });
 
 app.get('/report', async (req, res) => {
     const { filter } = req.query; 
-    
     if(!filter || filter === 'undefined') return res.json({ raw: [] });
-
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
@@ -396,188 +467,158 @@ app.get('/report', async (req, res) => {
         const metaData = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
         const allSheetNames = metaData.data.sheets.map(s => s.properties.title);
         const sheetsToFetch = allSheetNames.filter(name => name.endsWith(filter));
-
         if(sheetsToFetch.length === 0) return res.json({ raw: [] });
-
         const fetchPromises = sheetsToFetch.map(sheetName => 
             sheets.spreadsheets.values.get({ 
                 spreadsheetId: WRITE_SPREADSHEET_ID, 
                 range: `'${sheetName}'!A:I` 
             }).then(res => ({ name: sheetName, rows: res.data.values || [] }))
         );
-
         const results = await Promise.all(fetchPromises);
         let aggregatedRows = [];
-        
-        // Keep track of which sheet each row came from for deletion
         results.forEach(sheetData => { 
-            const sheetRows = sheetData.rows.slice(1).map((r, idx) => ({
-                ...r,
-                _sheetName: sheetData.name,
-                _rowIndex: idx + 2 // +1 for header, +1 for 0-index
-            }));
-            
-            // Map row array to object
+            const sheetRows = sheetData.rows.slice(1).map((r, idx) => ({ ...r, _sheetName: sheetData.name, _rowIndex: idx + 2 }));
             const mappedRows = sheetRows.map(row => {
                 const id = row[0] ? String(row[0]).trim() : null;
                 const name = row[1];
                 let imgUrl = '';
                 if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
                 else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
-
                 return {
                     id: id || 'Unknown', 
                     name: name || 'Unknown', 
                     group: row[2],
-                    timeOut: row[3],
-                    timeIn: row[4],
-                    area: row[5],
-                    date: row[6],
-                    overtime: row[7],
-                    image: imgUrl,
-                    _sheetName: row._sheetName, // Critical for delete
-                    _rowIndex: row._rowIndex    // Critical for delete
+                    timeOut: row[3], timeIn: row[4], area: row[5], date: row[6], overtime: row[7],
+                    image: imgUrl, _sheetName: row._sheetName, _rowIndex: row._rowIndex    
                 };
             });
-            
             aggregatedRows = aggregatedRows.concat(mappedRows);
         });
-        
         res.json({ raw: aggregatedRows });
-    } catch (error) {
-        console.error("Report Error:", error);
-        res.json({ raw: [] });
-    }
+    } catch (error) { res.json({ raw: [] }); }
 });
 
-// === DELETE SHEETS ENDPOINT (ARRAY SUPPORT) ===
 app.post('/delete-sheets', async (req, res) => {
     const { sheetNames } = req.body;
-    
-    if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) {
-        return res.status(400).json({ error: 'Missing sheet names' });
-    }
-
+    if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) return res.status(400).json({ error: 'Missing sheet names' });
     try {
-        await waitForLock(); // Acquire Lock
-
+        await waitForLock();
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-
-        // Get all existing sheets meta data to get Sheet IDs
-        const response = await sheets.spreadsheets.get({
-            spreadsheetId: WRITE_SPREADSHEET_ID
-        });
-        
+        const response = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
         const allSheets = response.data.sheets;
         const sheetsToDelete = allSheets.filter(s => sheetNames.includes(s.properties.title));
-
-        if (sheetsToDelete.length === 0) {
-            releaseLock();
-            return res.json({ status: 'success', message: 'No matching sheets found to delete' });
-        }
-
-        // IMPORTANT: Google Sheets API requires at least one sheet to remain.
+        if (sheetsToDelete.length === 0) { releaseLock(); return res.json({ status: 'success' }); }
         if (sheetsToDelete.length === allSheets.length) {
-             const newSheetTitle = `New Sheet ${Date.now()}`;
              await sheets.spreadsheets.batchUpdate({
                 spreadsheetId: WRITE_SPREADSHEET_ID,
-                resource: { requests: [{ addSheet: { properties: { title: newSheetTitle } } }] }
+                resource: { requests: [{ addSheet: { properties: { title: `New Sheet ${Date.now()}` } } }] }
             });
         }
-
-        const deleteRequests = sheetsToDelete.map(s => ({
-            deleteSheet: { sheetId: s.properties.sheetId }
-        }));
-
-        await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            resource: { requests: deleteRequests }
-        });
-
-        BREAKS_CACHE.timestamp = 0; // Clear cache
-        io.emit('data_updated');
+        const deleteRequests = sheetsToDelete.map(s => ({ deleteSheet: { sheetId: s.properties.sheetId } }));
+        await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests: deleteRequests } });
+        BREAKS_CACHE.timestamp = 0; io.emit('data_updated');
         res.json({ status: 'success', deletedCount: sheetsToDelete.length });
+    } catch (err) { res.status(500).json({ status: 'error', message: err.message }); } finally { releaseLock(); }
+});
 
-    } catch (err) {
-        console.error("Delete Error:", err);
-        res.status(500).json({ status: 'error', message: err.message });
-    } finally {
-        releaseLock();
+app.post('/delete-specific-rows', async (req, res) => {
+    const { itemsToDelete } = req.body;
+    if (!itemsToDelete || !Array.isArray(itemsToDelete)) return res.status(400).json({ error: 'Missing items' });
+    try {
+        await waitForLock();
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+        const sheetsMap = {};
+        const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+        const titleToId = {};
+        spreadsheetMeta.data.sheets.forEach(s => { titleToId[s.properties.title] = s.properties.sheetId; });
+        itemsToDelete.forEach(item => {
+            const sheetId = titleToId[item.sheetName];
+            if (sheetId && item.rowIndex > 1) {
+                if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
+                sheetsMap[sheetId].push(item.rowIndex - 1); 
+            }
+        });
+        const requests = [];
+        for (const [sheetId, indices] of Object.entries(sheetsMap)) {
+            indices.sort((a, b) => b - a);
+            indices.forEach(idx => {
+                requests.push({ deleteDimension: { range: { sheetId: parseInt(sheetId), dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } } });
+            });
+        }
+        if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests } });
+        BREAKS_CACHE.timestamp = 0; io.emit('data_updated');
+        res.json({ status: 'success' });
+    } catch (err) { res.status(500).json({ status: 'error', message: err.message }); } finally { releaseLock(); }
+});
+
+// === CARD MANAGEMENT ENDPOINTS ===
+
+// GET ALL CARD SETTINGS
+app.get('/cards', async (req, res) => {
+    try {
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+        const settings = await getCachedSettings(sheets);
+        res.json(settings);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
     }
 });
 
-// === NEW: DELETE SPECIFIC ROWS ENDPOINT ===
-app.post('/delete-specific-rows', async (req, res) => {
-    const { itemsToDelete } = req.body; // Expects array of { sheetName, rowIndex }
-    if (!itemsToDelete || !Array.isArray(itemsToDelete) || itemsToDelete.length === 0) {
-        return res.status(400).json({ error: 'Missing items to delete' });
-    }
+// ADD OR UPDATE CARD
+app.post('/cards/update', async (req, res) => {
+    const { cardId, zone } = req.body;
+    if (!cardId || !zone) return res.status(400).json({ error: 'Missing Data' });
 
     try {
         await waitForLock();
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-
-        const sheetsMap = {};
-        const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
         
-        const titleToId = {};
-        spreadsheetMeta.data.sheets.forEach(s => {
-            titleToId[s.properties.title] = s.properties.sheetId;
-        });
+        await ensureCardSettingsSheet(sheets);
 
-        itemsToDelete.forEach(item => {
-            const sheetId = titleToId[item.sheetName];
-            if (sheetId) {
-                if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
-                // Only allow deletion if rowIndex > 1 (Header protection)
-                if (item.rowIndex > 1) {
-                    sheetsMap[sheetId].push(item.rowIndex - 1); 
-                }
+        const r = await sheets.spreadsheets.values.get({ 
+            spreadsheetId: WRITE_SPREADSHEET_ID, 
+            range: `'${SETTINGS_SHEET_NAME}'!A:B` 
+        });
+        const rows = r.data.values || [];
+        
+        let rowIndex = -1;
+        for(let i=0; i<rows.length; i++) {
+            if(rows[i][0] === cardId) {
+                rowIndex = i + 1;
+                break;
             }
-        });
-
-        const requests = [];
-
-        for (const [sheetId, indices] of Object.entries(sheetsMap)) {
-            // Sort Descending
-            indices.sort((a, b) => b - a);
-            
-            indices.forEach(idx => {
-                requests.push({
-                    deleteDimension: {
-                        range: {
-                            sheetId: parseInt(sheetId),
-                            dimension: "ROWS",
-                            startIndex: idx,
-                            endIndex: idx + 1
-                        }
-                    }
-                });
-            });
         }
 
-        if (requests.length > 0) {
-            await sheets.spreadsheets.batchUpdate({
+        if (rowIndex > -1) {
+            await sheets.spreadsheets.values.update({
                 spreadsheetId: WRITE_SPREADSHEET_ID,
-                resource: { requests }
+                range: `'${SETTINGS_SHEET_NAME}'!B${rowIndex}`,
+                valueInputOption: 'RAW',
+                resource: { values: [[zone]] }
+            });
+        } else {
+            await sheets.spreadsheets.values.append({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                range: `'${SETTINGS_SHEET_NAME}'!A:B`,
+                valueInputOption: 'RAW',
+                resource: { values: [[cardId, zone]] }
             });
         }
-
-        BREAKS_CACHE.timestamp = 0;
-        io.emit('data_updated');
+        
+        SETTINGS_CACHE.timestamp = 0;
         res.json({ status: 'success' });
-
-    } catch (err) {
-        console.error("Row Delete Error:", err);
-        res.status(500).json({ status: 'error', message: err.message });
+    } catch (e) {
+        res.status(500).json({ error: "Configuration Error: " + e.message });
     } finally {
         releaseLock();
     }
 });
 
-// === WRITE ENDPOINTS (STRICT CONCURRENCY) ===
+// === WRITE ENDPOINTS (USING DYNAMIC SETTINGS) ===
 
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
@@ -591,6 +632,15 @@ app.post('/break', async (req, res) => {
         
         const activeBreaks = await getFreshBreaks(sheets);
         
+        // Ensure Settings exist before assigning
+        await ensureCardSettingsSheet(sheets);
+        
+        const rSettings = await sheets.spreadsheets.values.get({ 
+             spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:B` 
+        });
+        const sRows = rSettings.data.values || [];
+        const cardSettings = sRows.slice(1).map(r => ({ cardId: r[0], zone: r[1] }));
+
         const isAlreadyOnBreak = activeBreaks.some(b => String(b.id) === String(id));
 
         if (isAlreadyOnBreak) {
@@ -599,7 +649,8 @@ app.post('/break', async (req, res) => {
             return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
         }
         
-        const card = getNextAvailableCard(activeBreaks, area);
+        let card = getNextAvailableCard(activeBreaks, cardSettings, area);
+        
         if (!card) {
             releaseLock();
             return res.status(400).json({ error: 'No available card in this zone' });
@@ -636,75 +687,49 @@ app.post('/break', async (req, res) => {
 app.post('/timein', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'ID required' });
-
     try {
-        await waitForLock(); // Acquire Lock
-
+        await waitForLock();
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         const sheet = getTodaySheetName();
-
-        const r = await sheets.spreadsheets.values.get({ 
-            spreadsheetId: WRITE_SPREADSHEET_ID, 
-            range: `'${sheet}'!A:I` 
-        });
+        const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:I` });
         const rows = r.data.values || [];
-        
         let rowIndex = -1;
         let outTime = '';
         const targetId = String(id).trim();
-
-        // Find the active row
         for (let i = rows.length - 1; i >= 1; i--) {
             const rowId = rows[i][0] ? String(rows[i][0]).trim() : '';
-            // Must match ID and have NO timeIn
-            if (rowId === targetId && !rows[i][4]) {
-                rowIndex = i + 1;
-                outTime = rows[i][3];
-                break;
-            }
+            if (rowId === targetId && !rows[i][4]) { rowIndex = i + 1; outTime = rows[i][3]; break; }
         }
-
-        if (rowIndex === -1) {
-            releaseLock();
-            return res.json({ status: 'success', message: 'Already timed in' });
-        }
-
+        if (rowIndex === -1) { releaseLock(); return res.json({ status: 'success', message: 'Already timed in' }); }
         const now = getCambodiaDate();
         const diff = Math.floor((now - parseTimeStr(outTime)) / 60000);
         const overtime = diff > 15 ? `${diff - 15} mins` : '0';
         const timeInStr = getCurrentTimeString();
-
         await sheets.spreadsheets.values.batchUpdate({
             spreadsheetId: WRITE_SPREADSHEET_ID,
-            resource: {
-                valueInputOption: 'USER_ENTERED',
-                data: [
-                    { range: `'${sheet}'!E${rowIndex}`, values: [[timeInStr]] },
-                    { range: `'${sheet}'!H${rowIndex}`, values: [[overtime]] }
-                ]
-            }
+            resource: { valueInputOption: 'USER_ENTERED', data: [ { range: `'${sheet}'!E${rowIndex}`, values: [[timeInStr]] }, { range: `'${sheet}'!H${rowIndex}`, values: [[overtime]] } ] }
         });
-
-        BREAKS_CACHE.timestamp = 0;
-        io.emit('data_updated'); 
-        res.json({ status: 'success', timeIn: timeInStr });
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ status: 'error' });
-    } finally {
-        releaseLock();
-    }
+        BREAKS_CACHE.timestamp = 0; io.emit('data_updated'); res.json({ status: 'success', timeIn: timeInStr });
+    } catch (err) { console.error(err); res.status(500).json({ status: 'error' }); } finally { releaseLock(); }
 });
 
 // SOCKET LOGGING
 io.on('connection', (socket) => {
     console.log('Device connected:', socket.id);
-    socket.on('disconnect', () => {
-        console.log('Device disconnected:', socket.id);
-    });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
+// STARTUP CHECK: Ensure configuration sheet exists on launch
+server.listen(PORT, '0.0.0.0', async () => {
     console.log(`Server running on port http://localhost:${PORT}`);
+    
+    // STARTUP LOGIC: Ensure Settings Sheet Exists
+    try {
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+        console.log("Checking Card Configuration Sheet...");
+        await ensureCardSettingsSheet(sheets);
+    } catch (e) {
+        console.error("Initialization warning:", e.message);
+    }
 });
