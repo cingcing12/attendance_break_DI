@@ -19,6 +19,10 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3000;
 
+// === ADMIN CREDENTIALS ===
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
 app.use(cors());
 app.use(express.json());
 
@@ -326,9 +330,11 @@ async function getCachedBreaks(sheets) {
 
 app.get('/', (req, res) => res.send('Staff Hub API - Concurrency Safe v2'));
 
+// UPDATED LOGIN ROUTE
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
-    if(email === 'admin@company.com' && password === 'admin123') {
+    // Check against the configured credentials
+    if(email === ADMIN_EMAIL && password === ADMIN_PASSWORD) {
         res.json({ success: true, token: 'admin_secret_token_123' });
     } else {
         res.status(401).json({ success: false, message: 'Invalid Credentials' });
