@@ -6,7 +6,7 @@
     <title>Admin Dashboard - Staff Hub</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Khmer:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+Khmer:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -31,11 +31,11 @@
                         primary: "#6366f1", 
                     },
                     animation: {
-                        'enter': 'enter 0.5s ease-out forwards',
+                        'enter': 'enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
                     },
                     keyframes: {
                         enter: {
-                            '0%': { opacity: '0', transform: 'translateY(20px)' },
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
                         }
                     }
@@ -44,63 +44,73 @@
         }
     </script>
     <style>
-        body { background-color: #000; color: #e5e5e5; font-family: 'Noto Sans Khmer', sans-serif; -webkit-tap-highlight-color: transparent; }
-        .bg-glow { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; pointer-events: none; background: radial-gradient(circle at 50% 0%, rgba(99, 102, 241, 0.15), transparent 40%); }
-        .glass-nav { background: rgba(10, 10, 10, 0.8); backdrop-filter: blur(20px); border-bottom: 1px solid rgba(255,255,255,0.08); z-index: 40; }
-        .glass-card { background: rgba(20, 20, 20, 0.6); backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.06); box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        body { background-color: #020202; color: #e5e5e5; font-family: 'Noto Sans Khmer', sans-serif; -webkit-tap-highlight-color: transparent; overflow-x: hidden; }
+        .bg-glow { position: fixed; top: 0; left: 0; width: 100%; height: 100vh; z-index: -1; pointer-events: none; background: radial-gradient(circle at 15% 15%, rgba(99, 102, 241, 0.06), transparent 40%), radial-gradient(circle at 85% 85%, rgba(168, 85, 247, 0.06), transparent 40%); }
         
-        div:where(.swal2-container) div:where(.swal2-popup) {
-            background: rgba(20, 20, 20, 0.95) !important;
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #fff;
-            border-radius: 16px;
-        }
-        
-        #loading-overlay { background: rgba(0, 0, 0, 0.85); backdrop-filter: blur(12px); z-index: 9999; }
-        .tab-btn.active { background-color: #6366f1; color: white; box-shadow: 0 0 15px rgba(99, 102, 241, 0.4); border-color: rgba(99, 102, 241, 0.5); }
-        
-        /* Checkbox styling */
-        .checkbox-custom {
-            accent-color: #6366f1;
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-        }
+        /* Glass Panel */
+        .glass-panel { background: rgba(18, 18, 18, 0.65); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
+        .glass-input { background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); color: white; transition: all 0.2s; }
+        .glass-input:focus { border-color: #6366f1; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); background: rgba(0, 0, 0, 0.5); }
 
-        /* --- PRINT STYLING --- */
+        /* Sidebar Transition */
+        #sidebar { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        
+        .sidebar-link { display: flex; items-center: center; gap: 12px; padding: 12px 16px; border-radius: 12px; color: #94a3b8; transition: all 0.2s; font-weight: 500; font-size: 0.95rem; cursor: pointer; border: 1px solid transparent; }
+        .sidebar-link:hover { background: rgba(255,255,255,0.03); color: white; }
+        .sidebar-link.active { background: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99, 102, 241, 0.2); }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        /* SweetAlert */
+        div:where(.swal2-container) div:where(.swal2-popup) {
+            background: #121212 !important; border: 1px solid rgba(255,255,255,0.1); border-radius: 24px;
+        }
+        .swal2-title { color: #fff !important; font-family: 'Noto Sans Khmer', sans-serif !important; }
+        .swal2-html-container { color: #94a3b8 !important; }
+
+        /* Tabs */
+        .tab-bg { background: rgba(255,255,255,0.03); padding: 4px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.05); display: flex; width: fit-content; }
+        .tab-btn { padding: 8px 20px; border-radius: 10px; font-size: 0.85rem; font-weight: 600; color: #64748b; transition: all 0.2s; white-space: nowrap; }
+        .tab-btn:hover { color: #cbd5e1; }
+        .tab-btn.active { background: #27272a; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.1); }
+        
+        .checkbox-custom { accent-color: #6366f1; width: 18px; height: 18px; cursor: pointer; }
+
+        /* Print Hidden */
         #print-staging-area { position: fixed; top: 0; left: -9999px; z-index: -50; }
-        .print-page { width: 1200px; height: 1697px; background: white; color: #0f172a; padding: 50px; box-sizing: border-box; font-family: 'Noto Sans Khmer', sans-serif; display: flex; flex-direction: column; justify-content: space-between; }
-        .print-table { width: 100%; border-collapse: collapse; border: 2px solid #0f172a; font-family: 'Noto Sans Khmer', sans-serif; }
-        .print-table th { font-size: 25px !important; padding: 16px; background-color: #0f172a; color: white; font-weight: 700; text-align: center; border: 1px solid #334155; border-right: 1px solid rgba(255,255,255,0.1); letter-spacing: normal !important; }
-        .print-table td { font-size: 22px !important; padding: 14px; color: #1e293b; text-align: center; border: 1px solid #94a3b8; font-weight: 600; letter-spacing: normal !important; }
-        .print-table tr:nth-child(even) { background-color: #f1f5f9; }
-        select option { background-color: #121212; color: white; }
+        .print-page { width: 1200px; height: 1697px; background: white; color: #0f172a; padding: 60px; display: flex; flex-direction: column; }
+        .print-table { width: 100%; border-collapse: collapse; border: 2px solid #0f172a; margin-top: 20px; }
+        .print-table th { background: #0f172a; color: white; padding: 18px; font-size: 20px; font-weight: 700; border: 1px solid #334155; }
+        .print-table td { padding: 16px; font-size: 18px; color: #334155; border: 1px solid #cbd5e1; font-weight: 500; }
+        .print-table tr:nth-child(even) { background: #f8fafc; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex text-sm selection:bg-indigo-500/30">
 
     <div class="bg-glow"></div>
 
-    <div id="login-view" class="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div class="glass-card w-full max-w-md p-8 rounded-3xl shadow-2xl relative animate-enter border border-white/10">
-            <div class="text-center mb-8">
-                <div class="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-4 animate-float">
+    <div id="login-view" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black">
+        <div class="glass-panel w-full max-w-md p-8 rounded-3xl shadow-2xl relative animate-enter">
+            <div class="text-center mb-10">
+                <div class="w-16 h-16 bg-gradient-to-tr from-indigo-600 to-purple-600 rounded-2xl mx-auto flex items-center justify-center shadow-lg shadow-indigo-500/30 mb-5 animate-float">
                     <i data-lucide="shield-check" class="text-white w-8 h-8"></i>
                 </div>
-                <h2 class="text-2xl font-bold text-white font-khmer">ចូលប្រើប្រាស់ប្រព័ន្ធ</h2>
-                <p class="text-slate-400 text-sm mt-1">Admin Dashboard Login</p>
+                <h2 class="text-3xl font-bold text-white font-khmer tracking-tight">ចូលប្រើប្រាស់ប្រព័ន្ធ</h2>
+                <p class="text-slate-400 text-sm mt-2">Admin Dashboard Login</p>
             </div>
-            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-5">
+            <form id="loginForm" onsubmit="handleLogin(event)" class="space-y-6">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Email</label>
-                    <input type="email" id="email" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="name@company.com" required>
+                    <input type="email" id="email" class="w-full glass-input text-sm rounded-xl px-4 py-3.5 outline-none" required>
                 </div>
                 <div>
                     <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Password</label>
-                    <input type="password" id="password" class="w-full bg-black/40 text-white text-sm rounded-xl border border-white/10 px-4 py-3 focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none transition-all" placeholder="••••••••" required>
+                    <input type="password" id="password" class="w-full glass-input text-sm rounded-xl px-4 py-3.5 outline-none" required>
                 </div>
-                <button type="submit" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 shadow-xl shadow-indigo-900/30 transition-all flex items-center justify-center gap-2">
+                <button type="submit" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 shadow-xl shadow-indigo-900/30 transition-all flex items-center justify-center gap-2">
                     <span id="btn-text">ចូលប្រព័ន្ធ</span>
                     <i data-lucide="arrow-right" class="w-4 h-4"></i>
                 </button>
@@ -108,173 +118,277 @@
         </div>
     </div>
 
-    <div id="dashboard-view" class="hidden flex-col min-h-screen">
-        <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center hidden transition-opacity duration-300">
-            <div class="relative w-20 h-20 mb-4">
-                <div class="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
-                <div class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-            </div>
-            <h3 class="text-white font-bold text-lg tracking-widest font-khmer" id="loader-text">កំពុងផ្ទុកទិន្នន័យ</h3>
-        </div>
+    <div id="dashboard-view" class="hidden w-full h-screen overflow-hidden">
+        
+        <div id="sidebar-overlay" onclick="toggleSidebar()" class="fixed inset-0 bg-black/80 z-40 hidden md:hidden backdrop-blur-sm transition-opacity"></div>
 
-        <div id="print-staging-area"></div>
-
-        <div id="manage-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-            <div class="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-md p-6 shadow-2xl transform scale-100 transition-all ring-1 ring-white/10 flex flex-col max-h-[80vh]">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-xl font-bold text-white flex items-center gap-2 font-khmer">
-                        <i data-lucide="layers" class="text-rose-500 w-5 h-5"></i> គ្រប់គ្រងទិន្នន័យ
-                    </h3>
-                    <button onclick="closeManageModal()" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
-                </div>
-                
-                <div class="flex justify-between items-center mb-4 px-1">
-                    <p class="text-slate-400 text-sm font-khmer">ជ្រើសរើសកាលបរិច្ឆេទ៖</p>
-                    <div class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:bg-white/10 cursor-pointer" onclick="document.getElementById('select-all-sheets').click()">
-                        <input type="checkbox" id="select-all-sheets" class="checkbox-custom" onclick="event.stopPropagation(); toggleSelectAllSheets()">
-                        <label for="select-all-sheets" class="text-xs text-white font-khmer cursor-pointer font-bold select-none">ជ្រើសរើសទាំងអស់</label>
+        <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 w-72 bg-[#050505] border-r border-white/5 flex flex-col transform -translate-x-full md:relative md:translate-x-0">
+            <div class="p-8 border-b border-white/5 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                        <i data-lucide="bar-chart-2" class="text-white w-5 h-5"></i>
                     </div>
+                    <h1 class="font-bold text-lg font-khmer tracking-tight text-white">Staff Hub</h1>
                 </div>
-                
-                <div id="sheet-list-container" class="flex-grow overflow-y-auto space-y-2 mb-6 pr-2">
-                    </div>
-
-                <div class="pt-4 border-t border-white/10">
-                    <button onclick="deleteSelectedSheets()" id="btn-confirm-delete" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-xl shadow-rose-900/20 transition-all flex items-center justify-center gap-2 font-khmer disabled:opacity-50 disabled:cursor-not-allowed">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i> លុបកាលបរិច្ឆេទដែលបានជ្រើសរើស
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <div id="print-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-            <div class="bg-[#0a0a0a] border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl transform scale-100 transition-all ring-1 ring-white/10">
-                <div class="flex justify-between items-center mb-6">
-                    <h3 class="text-xl font-bold text-white flex items-center gap-2 font-khmer">
-                        <i data-lucide="printer" class="text-indigo-500 w-5 h-5"></i> នាំចេញរបាយការណ៍
-                    </h3>
-                    <button onclick="closePrintModal()" class="text-slate-500 hover:text-white transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
-                </div>
-                <div class="space-y-5">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ប្រភេទរបាយការណ៍</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button onclick="setPrintMode('daily')" id="pm-daily" class="print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំថ្ងៃ</button>
-                            <button onclick="setPrintMode('monthly')" id="pm-monthly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំខែ</button>
-                            <button onclick="setPrintMode('yearly')" id="pm-yearly" class="print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer">ប្រចាំឆ្នាំ</button>
-                        </div>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ជ្រើសរើសកាលបរិច្ឆេទ</label>
-                        <select id="print-range-select" class="w-full bg-white/5 border border-white/10 text-white text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 block w-full pl-3 p-3 appearance-none transition-all font-mono"></select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ជ្រើសរើសតំបន់ (Zone)</label>
-                        <div class="grid grid-cols-3 gap-2">
-                            <button onclick="setZoneMode('all')" id="pz-all" class="zone-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer border border-transparent shadow-lg shadow-indigo-500/20">ទាំងអស់</button>
-                            <button onclick="setZoneMode('A')" id="pz-A" class="zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10">Zone A</button>
-                            <button onclick="setZoneMode('B')" id="pz-B" class="zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10">Zone B</button>
-                        </div>
-                    </div>
-                </div>
-                <button onclick="executePrint()" class="mt-8 w-full py-3.5 rounded-xl text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 shadow-xl shadow-indigo-900/20 transition-all flex items-center justify-center gap-2 font-khmer">
-                    <i data-lucide="download"></i> ទាញយក PDF
+                <button onclick="toggleSidebar()" class="md:hidden text-slate-400 hover:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
                 </button>
             </div>
+            
+            <nav class="flex-1 p-6 space-y-1.5 overflow-y-auto custom-scrollbar">
+                <div class="text-[11px] font-bold text-slate-600 uppercase tracking-wider px-4 mb-3">Menu</div>
+                
+                <div onclick="switchPage('dashboard'); toggleSidebarIfMobile()" id="nav-dashboard" class="sidebar-link active">
+                    <i data-lucide="layout-dashboard" class="w-5 h-5"></i> Dashboard
+                </div>
+                
+                <div onclick="switchPage('attendance'); toggleSidebarIfMobile()" id="nav-attendance" class="sidebar-link">
+                    <i data-lucide="users" class="w-5 h-5"></i> Attendance
+                </div>
+                
+                <div class="text-[11px] font-bold text-slate-600 uppercase tracking-wider px-4 mb-3 mt-8">System</div>
+                
+                <div onclick="openPrintModal(); toggleSidebarIfMobile()" class="sidebar-link">
+                    <i data-lucide="printer" class="w-5 h-5"></i> PDF Reports
+                </div>
+                
+                <div onclick="openManageModal(); toggleSidebarIfMobile()" class="sidebar-link">
+                    <i data-lucide="database" class="w-5 h-5"></i> Manage Data
+                </div>
+            </nav>
+
+            <div class="p-6 border-t border-white/5">
+                <button onclick="confirmLogout()" class="sidebar-link w-full text-rose-500 hover:bg-rose-500/10 hover:text-rose-400 border-none justify-start">
+                    <i data-lucide="log-out" class="w-5 h-5"></i> Logout
+                </button>
+            </div>
+        </aside>
+
+        <div class="md:hidden fixed top-0 left-0 right-0 h-16 bg-[#050505]/90 backdrop-blur-xl border-b border-white/5 flex items-center justify-between px-4 z-30">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
+                    <i data-lucide="bar-chart-2" class="text-white w-4 h-4"></i>
+                </div>
+                <span class="font-bold font-khmer text-lg text-white">Staff Hub</span>
+            </div>
+            <button onclick="toggleSidebar()" class="p-2 text-slate-400 active:text-white bg-white/5 rounded-lg">
+                <i data-lucide="menu" class="w-6 h-6"></i>
+            </button>
         </div>
 
-        <nav class="glass-nav sticky top-0 transition-all duration-300">
-            <div class="max-w-7xl mx-auto px-4 md:px-6 py-4">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-                            <i data-lucide="bar-chart-2" class="text-white w-5 h-5"></i>
+        <main class="flex-1 h-full overflow-y-auto relative pt-16 md:pt-0 bg-[#020202] custom-scrollbar">
+            
+            <div id="section-dashboard" class="p-6 md:p-12 max-w-[1600px] mx-auto animate-enter">
+                <header class="flex flex-col sm:flex-row justify-between sm:items-end mb-10 gap-4">
+                    <div>
+                        <h2 class="text-3xl font-bold text-white font-khmer mb-2">ផ្ទាំងគ្រប់គ្រង</h2>
+                        <p class="text-slate-400 text-sm">Real-time system overview & statistics</p>
+                    </div>
+                    <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 w-fit">
+                        <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                        <span class="text-xs font-bold text-emerald-400 uppercase tracking-wide">Live System</span>
+                    </div>
+                </header>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div class="glass-panel p-6 rounded-3xl relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 p-4 opacity-[0.03]">
+                            <i data-lucide="users" class="w-40 h-40 text-indigo-500"></i>
                         </div>
-                        <div>
-                            <h1 class="text-base font-bold text-white tracking-tight font-khmer">វិភាគទិន្នន័យបុគ្គលិក</h1>
-                            <div class="flex items-center gap-2">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse-fast shadow-[0_0_8px_#10b981]"></span>
-                                <p class="text-[10px] text-emerald-400 font-bold uppercase font-sans tracking-wider">LIVE REAL-TIME</p>
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center mb-5 text-indigo-400 border border-indigo-500/20">
+                                <i data-lucide="users" class="w-6 h-6"></i>
                             </div>
+                            <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 font-khmer">បុគ្គលិកសរុប</p>
+                            <h3 class="text-5xl font-bold text-white tracking-tight" id="stat-total-staff">0</h3>
                         </div>
                     </div>
-                    <button onclick="handleLogout()" class="absolute top-4 right-4 md:static p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors group">
-                        <i data-lucide="log-out" class="w-5 h-5 group-hover:text-rose-500 transition-colors"></i>
-                    </button>
-                    <div class="grid grid-cols-3 gap-px bg-white/10 rounded-lg p-px overflow-hidden">
-                        <div class="bg-black/80 px-4 py-2 text-center">
-                            <span class="text-[10px] text-slate-500 block font-khmer">បុគ្គលិក</span>
-                            <span class="text-sm font-bold text-white" id="stat-total-staff">0</span>
-                        </div>
-                        <div class="bg-black/80 px-4 py-2 text-center">
-                            <span class="text-[10px] text-slate-500 block font-khmer">កំណត់ត្រា</span>
-                            <span class="text-sm font-bold text-emerald-400" id="stat-total-breaks">0</span>
-                        </div>
-                        <div class="bg-black/80 px-4 py-2 text-center">
-                            <span class="text-[10px] text-slate-500 block font-khmer">ជូនដំណឹង</span>
-                            <span class="text-sm font-bold text-rose-500" id="stat-total-ot">0</span>
-                        </div>
-                    </div>
-                </div>
 
-                <div class="flex flex-col sm:flex-row gap-3">
-                    <div class="flex p-1 bg-white/5 rounded-lg border border-white/5 w-full sm:w-auto">
-                        <button onclick="changeMode('daily')" id="btn-daily" class="tab-btn active flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200 font-khmer">ប្រចាំថ្ងៃ</button>
-                        <button onclick="changeMode('monthly')" id="btn-monthly" class="tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200 font-khmer">ប្រចាំខែ</button>
-                        <button onclick="changeMode('yearly')" id="btn-yearly" class="tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200 font-khmer">ប្រចាំឆ្នាំ</button>
+                    <div class="glass-panel p-6 rounded-3xl relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 p-4 opacity-[0.03]">
+                            <i data-lucide="file-text" class="w-40 h-40 text-emerald-500"></i>
+                        </div>
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-5 text-emerald-400 border border-emerald-500/20">
+                                <i data-lucide="coffee" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 font-khmer">កំណត់ត្រាសម្រាក</p>
+                            <h3 class="text-5xl font-bold text-white tracking-tight" id="stat-total-breaks">0</h3>
+                        </div>
                     </div>
-                    <div class="relative flex-grow">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i data-lucide="calendar" class="h-4 w-4 text-slate-500"></i></div>
-                        <select id="dateFilter" onchange="manualFetch()" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-8 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none appearance-none transition-all font-mono">
-                            <option>Loading...</option>
-                        </select>
-                    </div>
-                    <div class="relative flex-grow-[2]">
-                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><i data-lucide="search" class="h-4 w-4 text-slate-500"></i></div>
-                        <input type="text" id="searchInput" class="w-full bg-white/5 text-white text-sm rounded-lg border border-white/5 pl-9 pr-4 py-2.5 focus:ring-1 focus:ring-indigo-500 focus:bg-white/10 outline-none placeholder-slate-600 transition-all font-khmer" placeholder="ស្វែងរកបុគ្គលិក...">
-                    </div>
-                    
-                    <button onclick="openManageModal()" class="bg-rose-600 hover:bg-rose-700 text-white p-2.5 rounded-lg transition-colors flex items-center justify-center shadow-lg shadow-rose-500/20 active:scale-95 group">
-                        <i data-lucide="trash-2" class="w-5 h-5"></i>
-                    </button>
 
-                    <button onclick="openPrintModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white p-2.5 rounded-lg transition-colors flex items-center justify-center shadow-lg shadow-indigo-500/20 active:scale-95">
-                        <i data-lucide="printer" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </div>
-        </nav>
-
-        <main class="max-w-7xl mx-auto w-full px-4 md:px-6 mt-8 pb-12">
-            <div class="flex items-end justify-between mb-6">
-                <h2 class="text-xl font-bold text-white font-khmer" id="view-title">សកម្មភាពថ្មីៗ</h2>
-                </div>
-            <div id="view-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 animate-enter"></div>
-            <div id="view-table" class="hidden animate-enter">
-                <div class="glass-card rounded-xl overflow-hidden">
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-left text-sm text-slate-400">
-                            <thead class="bg-white/5 text-xs uppercase font-bold text-slate-300 font-khmer">
-                                <tr>
-                                    <th class="px-6 py-4">បុគ្គលិក</th>
-                                    <th class="px-6 py-4">ផ្នែក/ក្រុម</th>
-                                    <th class="px-6 py-4 text-center">ចំនួនសម្រាក</th>
-                                    <th class="px-6 py-4 text-center">លើសម៉ោង</th>
-                                </tr>
-                            </thead>
-                            <tbody class="divide-y divide-white/5" id="table-body"></tbody>
-                        </table>
+                    <div class="glass-panel p-6 rounded-3xl relative overflow-hidden group">
+                        <div class="absolute -right-6 -top-6 p-4 opacity-[0.03]">
+                            <i data-lucide="clock" class="w-40 h-40 text-rose-500"></i>
+                        </div>
+                        <div class="relative z-10">
+                            <div class="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center mb-5 text-rose-400 border border-rose-500/20">
+                                <i data-lucide="alert-circle" class="w-6 h-6"></i>
+                            </div>
+                            <p class="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2 font-khmer">លើសម៉ោង</p>
+                            <h3 class="text-5xl font-bold text-white tracking-tight" id="stat-total-ot">0</h3>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div id="empty-state" class="hidden flex-col items-center justify-center py-32 text-center">
-                <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mb-4 mx-auto">
-                    <i data-lucide="coffee" class="w-8 h-8 text-slate-600"></i>
+
+            <div id="section-attendance" class="p-4 md:p-10 max-w-[1600px] mx-auto hidden animate-enter">
+                <header class="flex flex-col xl:flex-row justify-between xl:items-end mb-8 gap-6">
+                    <div class="flex items-center justify-between w-full xl:w-auto">
+                        <div>
+                            <h2 class="text-3xl font-bold text-white font-khmer mb-2">បញ្ជីវត្តមាន</h2>
+                            <p class="text-slate-400 text-sm font-khmer" id="view-title">កំពុងផ្ទុកទិន្នន័យ...</p>
+                        </div>
+                        <button onclick="toggleMobileFilters()" class="xl:hidden p-3 bg-white/5 rounded-xl text-slate-300 hover:text-white border border-white/10 active:scale-95 transition-all">
+                            <i data-lucide="list-filter" class="w-5 h-5"></i>
+                        </button>
+                    </div>
+
+                    <div id="filter-container" class="hidden xl:flex flex-col md:flex-row items-start md:items-center gap-3 w-full xl:w-auto animate-slide-down xl:animate-none overflow-hidden xl:overflow-visible bg-[#0e0e0e] xl:bg-transparent p-5 xl:p-0 rounded-2xl border xl:border-none border-white/10 shadow-2xl xl:shadow-none">
+                        
+                        <div class="tab-bg shrink-0">
+                            <button onclick="changeMode('daily')" id="btn-daily" class="tab-btn active font-khmer">ប្រចាំថ្ងៃ</button>
+                            <button onclick="changeMode('monthly')" id="btn-monthly" class="tab-btn font-khmer">ប្រចាំខែ</button>
+                            <button onclick="changeMode('yearly')" id="btn-yearly" class="tab-btn font-khmer">ប្រចាំឆ្នាំ</button>
+                        </div>
+                        
+                        <div class="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                            <div class="relative w-full md:w-auto min-w-[180px]">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><i data-lucide="calendar" class="h-4 w-4 text-slate-500"></i></div>
+                                <select id="dateFilter" onchange="manualFetch()" class="w-full glass-input text-sm rounded-xl pl-10 pr-8 py-2.5 outline-none appearance-none font-mono cursor-pointer">
+                                    <option>Loading...</option>
+                                </select>
+                            </div>
+                            
+                            <div class="relative w-full md:w-auto min-w-[120px]">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><i data-lucide="map-pin" class="h-4 w-4 text-slate-500"></i></div>
+                                <select id="zoneFilter" onchange="renderView()" class="w-full glass-input text-sm rounded-xl pl-10 pr-8 py-2.5 outline-none appearance-none font-mono cursor-pointer">
+                                    <option value="all">All Zones</option>
+                                    <option value="A">Zone A</option>
+                                    <option value="B">Zone B</option>
+                                </select>
+                            </div>
+
+                            <div class="relative w-full md:w-auto min-w-[240px]">
+                                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none"><i data-lucide="search" class="h-4 w-4 text-slate-500"></i></div>
+                                <input type="text" id="searchInput" onkeyup="renderView()" class="w-full glass-input text-sm rounded-xl pl-10 pr-4 py-2.5 outline-none placeholder-slate-600 font-khmer" placeholder="ស្វែងរក ID ឬ ឈ្មោះ...">
+                            </div>
+
+                             <button onclick="manualFetch()" class="hidden md:flex p-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white border border-white/10 transition-colors">
+                                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                </header>
+
+                <div id="view-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5"></div>
+                
+                <div id="view-table" class="hidden">
+                    <div class="glass-panel rounded-2xl overflow-hidden border-0">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-sm text-slate-400">
+                                <thead class="bg-white/5 text-xs uppercase font-bold text-slate-300 font-khmer tracking-wider">
+                                    <tr>
+                                        <th class="px-6 py-5">បុគ្គលិក</th>
+                                        <th class="px-6 py-5">ផ្នែក/ក្រុម</th>
+                                        <th class="px-6 py-5 text-center">ចំនួនសម្រាក</th>
+                                        <th class="px-6 py-5 text-center">លើសម៉ោង</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-white/5" id="table-body"></tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
-                <h3 class="text-white font-bold font-khmer">មិនមានទិន្នន័យ</h3>
-                <p class="text-slate-500 text-sm mt-1 font-khmer">សូមព្យាយាមជ្រើសរើសកាលបរិច្ឆេទផ្សេង។</p>
+                
+                <div id="empty-state" class="hidden flex-col items-center justify-center py-24 text-center">
+                    <div class="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mb-5 mx-auto border border-white/5">
+                        <i data-lucide="search-x" class="w-10 h-10 text-slate-600"></i>
+                    </div>
+                    <h3 class="text-white font-bold font-khmer text-lg">មិនមានទិន្នន័យ</h3>
+                    <p class="text-slate-500 text-sm mt-1 font-khmer">មិនមានទិន្នន័យសម្រាប់កាលបរិច្ឆេទ ឬការស្វែងរកនេះទេ។</p>
+                </div>
             </div>
         </main>
+    </div>
+
+    <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center hidden z-[100] bg-black/80 backdrop-blur-md">
+        <div class="relative w-16 h-16 mb-4">
+            <div class="absolute inset-0 border-4 border-indigo-500/30 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+        <h3 class="text-white font-bold text-sm tracking-widest font-khmer" id="loader-text">កំពុងផ្ទុក...</h3>
+    </div>
+
+    <div id="print-staging-area"></div>
+
+    <div id="manage-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-md p-6 rounded-3xl flex flex-col max-h-[85vh] animate-enter">
+            <div class="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+                <h3 class="text-lg font-bold text-white flex items-center gap-3 font-khmer">
+                    <div class="p-2 bg-indigo-500/10 rounded-lg text-indigo-400"><i data-lucide="database" class="w-5 h-5"></i></div>
+                    គ្រប់គ្រងទិន្នន័យ
+                </h3>
+                <button onclick="closeManageModal()" class="text-slate-500 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <div class="tab-bg w-full mb-4">
+                <button onclick="setManageMode('date')" id="dm-date" class="tab-btn font-khmer w-full active">កាលបរិច្ឆេទ</button>
+                <button onclick="setManageMode('month')" id="dm-month" class="tab-btn font-khmer w-full">ប្រចាំខែ</button>
+                <button onclick="setManageMode('year')" id="dm-year" class="tab-btn font-khmer w-full">ប្រចាំឆ្នាំ</button>
+            </div>
+
+            <div class="flex justify-between items-center mb-4 px-1">
+                <p class="text-slate-400 text-xs font-khmer" id="manage-hint">ជ្រើសរើសកាលបរិច្ឆេទដើម្បីលុប៖</p>
+                <div id="select-all-container" class="flex items-center gap-2 bg-white/5 px-3 py-1.5 rounded-lg border border-white/5 hover:bg-white/10 cursor-pointer transition-colors" onclick="document.getElementById('select-all-sheets').click()">
+                    <input type="checkbox" id="select-all-sheets" class="checkbox-custom" onclick="event.stopPropagation(); toggleSelectAllSheets()">
+                    <label class="text-xs text-white font-khmer cursor-pointer font-bold select-none">ជ្រើសរើសទាំងអស់</label>
+                </div>
+            </div>
+            
+            <div id="sheet-list-container" class="flex-grow overflow-y-auto space-y-2 mb-6 pr-2 custom-scrollbar"></div>
+
+            <button onclick="deleteSelectedSheets()" id="btn-confirm-delete" class="w-full py-3.5 rounded-xl text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 shadow-lg shadow-rose-900/20 transition-all flex items-center justify-center gap-2 font-khmer disabled:opacity-50 disabled:cursor-not-allowed">
+                <i data-lucide="trash-2" class="w-4 h-4"></i> លុបកាលបរិច្ឆេទដែលបានជ្រើសរើស
+            </button>
+        </div>
+    </div>
+
+    <div id="print-modal" class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
+        <div class="glass-panel w-full max-w-sm p-8 rounded-3xl animate-enter">
+            <div class="flex justify-between items-center mb-6 border-b border-white/5 pb-4">
+                <h3 class="text-lg font-bold text-white flex items-center gap-3 font-khmer">
+                    <div class="p-2 bg-indigo-500/10 rounded-lg text-indigo-400"><i data-lucide="printer" class="w-5 h-5"></i></div>
+                    Export PDF
+                </h3>
+                <button onclick="closePrintModal()" class="text-slate-500 hover:text-white transition-colors bg-white/5 p-1 rounded-full"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="space-y-6">
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">ប្រភេទរបាយការណ៍</label>
+                    <div class="tab-bg w-full">
+                        <button onclick="setPrintMode('daily')" id="pm-daily" class="tab-btn font-khmer w-full">ប្រចាំថ្ងៃ</button>
+                        <button onclick="setPrintMode('monthly')" id="pm-monthly" class="tab-btn font-khmer w-full">ប្រចាំខែ</button>
+                        <button onclick="setPrintMode('yearly')" id="pm-yearly" class="tab-btn font-khmer w-full">ប្រចាំឆ្នាំ</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">កាលបរិច្ឆេទ</label>
+                    <select id="print-range-select" class="w-full glass-input text-white text-sm rounded-xl focus:ring-2 focus:ring-indigo-500 block w-full p-3 outline-none font-mono"></select>
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2 font-khmer">Zone</label>
+                    <div class="grid grid-cols-3 gap-2">
+                        <button onclick="setZoneMode('all')" id="pz-all" class="zone-mode-btn bg-indigo-600 text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-indigo-500/20">All</button>
+                        <button onclick="setZoneMode('A')" id="pz-A" class="zone-mode-btn bg-white/5 text-slate-400 py-2.5 rounded-xl text-xs font-bold border border-white/10 hover:bg-white/10 transition-all">Zone A</button>
+                        <button onclick="setZoneMode('B')" id="pz-B" class="zone-mode-btn bg-white/5 text-slate-400 py-2.5 rounded-xl text-xs font-bold border border-white/10 hover:bg-white/10 transition-all">Zone B</button>
+                    </div>
+                </div>
+            </div>
+            <button onclick="executePrint()" class="mt-8 w-full py-3.5 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-xl shadow-indigo-500/20 transition-all flex items-center justify-center gap-2 font-khmer">
+                <i data-lucide="download" class="w-4 h-4"></i> ទាញយក PDF
+            </button>
+        </div>
     </div>
 
     <script>
@@ -292,7 +406,53 @@
         let staffCacheData = [];
         let pollingInterval = null;
         let selectedSheets = new Set(); 
+        
+        // --- MOBILE SIDEBAR LOGIC ---
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+            
+            if (sidebar.classList.contains('-translate-x-full')) {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            } else {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            }
+        }
 
+        function toggleSidebarIfMobile() {
+            if (window.innerWidth < 768) {
+                toggleSidebar();
+            }
+        }
+
+        // --- FILTER TOGGLE ---
+        function toggleMobileFilters() {
+            const container = document.getElementById('filter-container');
+            container.classList.toggle('hidden');
+            container.classList.toggle('flex');
+            if(!container.classList.contains('hidden')) {
+               container.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // --- UI NAVIGATION ---
+        function switchPage(page) {
+            document.querySelectorAll('.sidebar-link').forEach(el => el.classList.remove('active'));
+            document.getElementById(`nav-${page}`).classList.add('active');
+            
+            document.getElementById('section-dashboard').classList.add('hidden');
+            document.getElementById('section-attendance').classList.add('hidden');
+            
+            const target = document.getElementById(`section-${page}`);
+            target.classList.remove('hidden');
+            target.classList.add('animate-enter');
+            
+            lucide.createIcons();
+        }
+
+        // --- AUTH & INIT ---
         if(localStorage.getItem('admin_token')) showDashboard();
 
         async function handleLogin(e) {
@@ -315,20 +475,35 @@
                     localStorage.setItem('admin_token', data.token);
                     showDashboard();
                 } else {
-                    Swal.fire({ icon: 'error', title: 'Login Failed', background: '#1e1e1e', color: '#fff' });
+                    Swal.fire({ icon: 'error', title: 'Login Failed', background: '#121212', color: '#fff', confirmButtonColor: '#6366f1' });
                 }
             } catch (err) {
-                Swal.fire({ icon: 'error', title: 'Server Error', background: '#1e1e1e', color: '#fff' });
+                Swal.fire({ icon: 'error', title: 'Server Error' });
             } finally {
                 btn.disabled = false;
                 btnText.innerText = "ចូលប្រព័ន្ធ";
             }
         }
 
-        function handleLogout() {
-            localStorage.removeItem('admin_token');
-            if(pollingInterval) clearInterval(pollingInterval);
-            window.location.reload();
+        function confirmLogout() {
+            Swal.fire({
+                title: 'ចាកចេញ?',
+                text: "តើអ្នកពិតជាចង់ចាកចេញមែនទេ?",
+                icon: 'question',
+                showCancelButton: true,
+                background: '#121212',
+                color: '#fff',
+                confirmButtonColor: '#e11d48',
+                cancelButtonColor: '#333',
+                confirmButtonText: 'Yes, Logout',
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    localStorage.removeItem('admin_token');
+                    if(pollingInterval) clearInterval(pollingInterval);
+                    window.location.reload();
+                }
+            });
         }
 
         function showDashboard() {
@@ -340,13 +515,13 @@
 
         async function initDashboard() {
             lucide.createIcons();
+            switchPage('dashboard'); 
             try {
                 showLoading(); 
                 const staffRes = await fetch(`${API_URL}/staff`);
                 if(staffRes.ok) staffCacheData = await staffRes.json();
 
                 const res = await fetch(`${API_URL}/available-sheets`);
-                if (!res.ok) throw new Error('API Error');
                 availableSheets = await res.json();
                 
                 const today = new Date();
@@ -402,8 +577,8 @@
 
         function changeMode(mode) {
             currentMode = mode;
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.className = "tab-btn flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold text-slate-400 hover:text-white transition-all duration-200 font-khmer");
-            document.getElementById(`btn-${mode}`).className = "tab-btn active flex-1 sm:flex-none px-5 py-2 rounded-md text-xs font-bold transition-all duration-200 font-khmer";
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.className = "tab-btn font-khmer");
+            document.getElementById(`btn-${mode}`).className = "tab-btn active font-khmer";
 
             const currentVal = document.getElementById('dateFilter').value;
             let nextVal = '';
@@ -446,16 +621,33 @@
             const uniqueStaff = new Set(data.map(item => item.id)).size;
             const otCount = data.filter(item => item.overtime && item.overtime !== "0").length;
             const filterTxt = document.getElementById('dateFilter').value;
+            
             document.getElementById('stat-total-staff').innerText = uniqueStaff;
             document.getElementById('stat-total-breaks').innerText = data.length;
             document.getElementById('stat-total-ot').innerText = otCount;
+            
             const modeText = currentMode === 'daily' ? 'ប្រចាំថ្ងៃ' : currentMode === 'monthly' ? 'ប្រចាំខែ' : 'ប្រចាំឆ្នាំ';
             document.getElementById('view-title').innerText = `${modeText}: ${filterTxt}`;
         }
 
+        // --- RENDER VIEW ---
         function renderView() {
-            const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-            const filtered = fetchedData.filter(item => item.name.toLowerCase().includes(searchTerm) || item.id.toString().includes(searchTerm));
+            const rawSearchTerm = document.getElementById('searchInput').value;
+            const searchTerm = rawSearchTerm ? rawSearchTerm.toLowerCase().trim() : "";
+            const zoneFilter = document.getElementById('zoneFilter').value; 
+
+            const filtered = fetchedData.filter(item => {
+                const nameMatch = item.name && item.name.toLowerCase().includes(searchTerm);
+                const idMatch = item.id && item.id.toString().toLowerCase().includes(searchTerm);
+                const searchPass = nameMatch || idMatch;
+
+                let zonePass = true;
+                if (zoneFilter !== 'all') {
+                    zonePass = item.area && String(item.area).trim() === zoneFilter;
+                }
+
+                return searchPass && zonePass;
+            });
 
             const viewGrid = document.getElementById('view-grid');
             const viewTable = document.getElementById('view-table');
@@ -478,160 +670,86 @@
                 viewTable.classList.remove('hidden');
                 renderTable(filtered);
             }
+            lucide.createIcons();
         }
 
-        // --- MANAGE SHEETS MODAL & LOGIC ---
-        function openManageModal() {
-            document.getElementById('manage-modal').classList.remove('hidden');
-            selectedSheets.clear();
-            document.getElementById('select-all-sheets').checked = false;
-            renderSheetList();
-            updateDeleteButton();
-        }
-
-        function closeManageModal() {
-            document.getElementById('manage-modal').classList.add('hidden');
-        }
-
-        // NEW: Select All Logic
-        function toggleSelectAllSheets() {
-            const isChecked = document.getElementById('select-all-sheets').checked;
-            if (isChecked) {
-                availableSheets.forEach(sheet => selectedSheets.add(sheet));
-            } else {
-                selectedSheets.clear();
-            }
-            renderSheetList();
-            updateDeleteButton();
-        }
-
-        function renderSheetList() {
-            const container = document.getElementById('sheet-list-container');
-            container.innerHTML = '';
+        // --- RENDER TABLE ---
+        function renderTable(data) {
+            const tbody = document.getElementById('table-body');
             
-            if (availableSheets.length === 0) {
-                container.innerHTML = '<p class="text-center text-slate-500 py-4">No records found.</p>';
-                return;
-            }
+            if(currentMode === 'daily') {
+                data.sort((a,b) => (b.timeOut || '').localeCompare(a.timeOut || ''));
 
-            // Reverse to show newest first
-            [...availableSheets].reverse().forEach(sheet => {
-                const isSelected = selectedSheets.has(sheet);
-                const el = document.createElement('div');
-                el.className = `flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${isSelected ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`;
-                el.onclick = (e) => {
-                    // Toggle if clicking container
-                    if (e.target.type !== 'checkbox') {
-                        toggleSheetSelection(sheet);
-                    }
-                };
+                const html = data.map(item => {
+                    const staffInfo = staffCacheData.find(s => s.id == item.id);
+                    const khName = staffInfo ? (staffInfo.name_kh || staffInfo.name_en) : item.name;
+                    const groupName = staffInfo ? (staffInfo.group || item.group) : item.group;
+                    const imgUrl = item.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(item.name)}`;
+                    const otDisplay = (item.overtime && item.overtime !== '0') ? 
+                        `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-bold font-khmer">${item.overtime}</span>` : 
+                        `<span class="text-slate-600 text-xs font-mono">-</span>`;
 
-                el.innerHTML = `
-                    <div class="flex items-center gap-3">
-                        <input type="checkbox" class="checkbox-custom" ${isSelected ? 'checked' : ''} onclick="toggleSheetSelection('${sheet}'); event.stopPropagation();">
-                        <span class="text-sm font-mono font-bold text-white">${sheet}</span>
-                    </div>
-                `;
-                container.appendChild(el);
-            });
-            
-            // Sync "Select All" checkbox state if user manually clicks individual items
-            const selectAllBox = document.getElementById('select-all-sheets');
-            if (availableSheets.length > 0 && selectedSheets.size === availableSheets.length) {
-                selectAllBox.checked = true;
-                selectAllBox.indeterminate = false;
-            } else if (selectedSheets.size > 0) {
-                selectAllBox.checked = false;
-                selectAllBox.indeterminate = true;
+                    return `
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-4">
+                                    <img src="${imgUrl}" class="w-10 h-10 rounded-full bg-slate-800 object-cover border border-white/5">
+                                    <div>
+                                        <div class="font-bold text-white text-sm font-khmer">${khName}</div>
+                                        <div class="text-xs text-slate-500 font-mono mt-0.5">ID: ${item.id}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 text-xs font-bold border border-white/5">${groupName}</span></td>
+                            <td class="px-6 py-4 text-center">
+                                <div class="flex flex-col text-xs">
+                                    <span class="text-slate-300 font-mono">Out: ${item.timeOut}</span>
+                                    <span class="text-slate-500 font-mono">In: ${item.timeIn || '...'}</span>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4 text-center">${otDisplay}</td>
+                        </tr>
+                    `;
+                }).join('');
+                tbody.innerHTML = html;
             } else {
-                selectAllBox.checked = false;
-                selectAllBox.indeterminate = false;
-            }
-        }
+                const aggregation = {};
+                data.forEach(log => {
+                    if(!aggregation[log.id]) aggregation[log.id] = { ...log, breakCount: 0, otCount: 0 };
+                    aggregation[log.id].breakCount++;
+                    if(log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
+                });
+                const sorted = Object.values(aggregation).sort((a,b) => b.breakCount - a.breakCount);
+                const html = sorted.map(user => {
+                    const staffInfo = staffCacheData.find(s => s.id == user.id);
+                    const khName = staffInfo ? (staffInfo.name_kh || staffInfo.name_en) : user.name;
+                    const groupName = staffInfo ? (staffInfo.group || user.group) : user.group;
+                    const imgUrl = user.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(user.name)}`;
+                    const otDisplay = user.otCount > 0 ? `<span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-bold font-khmer">${user.otCount} លើក</span>` : `<span class="text-slate-600 text-xs font-mono">-</span>`;
 
-        function toggleSheetSelection(sheet) {
-            if (selectedSheets.has(sheet)) {
-                selectedSheets.delete(sheet);
-            } else {
-                selectedSheets.add(sheet);
-            }
-            renderSheetList(); // Re-render to update styles
-            updateDeleteButton();
-        }
-
-        function updateDeleteButton() {
-            const btn = document.getElementById('btn-confirm-delete');
-            const count = selectedSheets.size;
-            
-            if (count > 0) {
-                btn.disabled = false;
-                btn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i> លុប ${count} កាលបរិច្ឆេទ`;
-                btn.classList.remove('opacity-50', 'cursor-not-allowed');
-            } else {
-                btn.disabled = true;
-                btn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i> លុបកាលបរិច្ឆេទដែលបានជ្រើសរើស`;
-                btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    return `
+                        <tr class="hover:bg-white/5 transition-colors group">
+                            <td class="px-6 py-4">
+                                <div class="flex items-center gap-4">
+                                    <img src="${imgUrl}" class="w-10 h-10 rounded-full bg-slate-800 object-cover border border-white/5">
+                                    <div>
+                                        <div class="font-bold text-white text-sm font-khmer">${khName}</div>
+                                        <div class="text-xs text-slate-500 font-mono mt-0.5">ID: ${user.id}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="px-6 py-4"><span class="px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 text-xs font-bold border border-white/5">${groupName}</span></td>
+                            <td class="px-6 py-4 text-center"><span class="font-mono text-white text-sm font-bold bg-white/5 px-3 py-1 rounded-lg">${user.breakCount}</span></td>
+                            <td class="px-6 py-4 text-center">${otDisplay}</td>
+                        </tr>
+                    `;
+                }).join('');
+                tbody.innerHTML = html;
             }
             lucide.createIcons();
         }
 
-        function deleteSelectedSheets() {
-            if (selectedSheets.size === 0) return;
-
-            Swal.fire({
-                title: 'Confirm Delete',
-                text: `Are you sure you want to delete ${selectedSheets.size} records? This cannot be undone.`,
-                icon: 'warning',
-                background: '#18181b',
-                showCancelButton: true,
-                confirmButtonColor: '#e11d48',
-                confirmButtonText: 'Yes, Delete All',
-                customClass: { popup: 'border border-white/10 rounded-2xl' }
-            }).then((result) => {
-                if (result.isConfirmed) performBatchDelete();
-            });
-        }
-
-        async function performBatchDelete() {
-            showLoading("Deleting records...");
-            closeManageModal();
-            
-            const sheetsToDelete = Array.from(selectedSheets);
-
-            try {
-                const res = await fetch(`${API_URL}/delete-sheets`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ sheetNames: sheetsToDelete })
-                });
-                
-                const data = await res.json();
-                if (data.status === 'success') {
-                    // Refresh everything
-                    const resSheets = await fetch(`${API_URL}/available-sheets`);
-                    if(resSheets.ok) availableSheets = await resSheets.json();
-                    
-                    // Reset View
-                    populateFilter('daily'); 
-                    manualFetch();
-                    
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: 'Deleted Successfully!', 
-                        background: '#18181b', 
-                        timer: 1500, 
-                        showConfirmButton: false 
-                    });
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: '#18181b' });
-            } finally {
-                hideLoading();
-            }
-        }
-
+        // --- RENDER GRID (STAFF CARDS) WITH DELETE ---
         function renderGrid(data) {
             const container = document.getElementById('view-grid');
             const userGroups = {};
@@ -649,43 +767,50 @@
             const newHTML = sortedUsers.map(user => {
                 const staffInfo = staffCacheData.find(s => s.id == user.id);
                 const khName = staffInfo ? (staffInfo.name_kh || staffInfo.name_en) : user.name;
-                const enName = staffInfo ? (staffInfo.name_en || "") : "";
                 const groupName = staffInfo ? (staffInfo.group || user.group) : user.group;
                 const imgUrl = user.image || `https://ui-avatars.com/api/?background=random&color=fff&background=6366f1&name=${encodeURIComponent(user.name)}`;
                 const lastBreak = user.breaks[user.breaks.length - 1];
                 const isActive = !lastBreak.timeIn;
-                const borderClass = isActive ? 'border-indigo-500/50 shadow-[0_0_15px_rgba(99,102,241,0.15)] bg-indigo-900/10' : 'border-white/5 hover:border-white/10';
+                const borderClass = isActive ? 'border-indigo-500/50 shadow-[0_0_25px_rgba(99,102,241,0.15)] bg-indigo-500/5' : 'border-white/5 hover:border-white/10 hover:bg-white/5';
                 
                 const timelineHtml = user.breaks.map(b => `
-                    <div class="timeline-item relative pl-4 pb-3 last:pb-0">
+                    <div class="timeline-item relative pl-4 pb-6 last:pb-0 group/item">
                         <div class="timeline-line absolute left-[4.5px] top-[6px] bottom-0 w-[1px] bg-white/10"></div>
-                        <div class="absolute left-0 top-[6px] w-2.5 h-2.5 rounded-full border-2 border-[#171717] ${!b.timeIn ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]' : 'bg-slate-700'}"></div>
+                        <div class="absolute left-0 top-[6px] w-2.5 h-2.5 rounded-full border-2 border-[#121212] ${!b.timeIn ? 'bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]' : 'bg-slate-700'}"></div>
+                        
                         <div class="flex justify-between items-start text-xs">
                             <div class="flex flex-col">
-                                <span class="text-slate-300 font-mono">${b.timeOut}</span>
+                                <span class="text-slate-300 font-mono font-bold">${b.timeOut}</span>
                                 ${!b.timeIn ? '<span class="text-[10px] text-indigo-400 font-bold mt-0.5 tracking-wider font-khmer">កំពុងសម្រាក</span>' : ''}
                             </div>
-                            <div class="text-right">
-                                <span class="text-slate-500 font-mono">${b.timeIn || '...'}</span>
-                                ${(b.overtime && b.overtime !== '0') ? `<div class="text-[10px] text-rose-500 font-bold mt-0.5">+${b.overtime} នាទី</div>` : ''}
+                            <div class="text-right pr-6">
+                                <span class="text-slate-500 font-mono font-bold">${b.timeIn || '--:--'}</span>
+                                ${(b.overtime && b.overtime !== '0') ? `<div class="text-[10px] text-rose-500 font-bold mt-0.5">+${b.overtime}m</div>` : ''}
                             </div>
                         </div>
+
+                        <button onclick="confirmDeleteRow('${b._sheetName}', ${b._rowIndex})" class="absolute top-0 right-0 p-1.5 text-rose-500 hover:text-white hover:bg-rose-500/20 rounded-md opacity-0 group-hover/item:opacity-100 transition-all z-10" title="Delete record">
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+                        </button>
                     </div>
                 `).join('');
 
                 return `
-                    <div class="glass-card p-4 rounded-xl border ${borderClass} transition-all duration-300">
-                        <div class="flex items-center gap-3 mb-4">
+                    <div class="glass-panel p-5 rounded-3xl border ${borderClass} transition-all duration-300 group relative">
+                        <div class="flex items-center gap-4 mb-4">
                             <div class="relative">
-                                <img src="${imgUrl}" class="w-12 h-12 rounded-full object-cover bg-slate-800 border border-white/10">
+                                <img src="${imgUrl}" class="w-14 h-14 rounded-full object-cover bg-slate-800 border-2 border-white/5 group-hover:border-white/10 transition-colors">
+                                ${isActive ? '<div class="absolute bottom-0 right-0 w-3.5 h-3.5 bg-indigo-500 border-2 border-[#121212] rounded-full animate-pulse"></div>' : ''}
                             </div>
                             <div class="overflow-hidden">
-                                <h4 class="text-white font-bold text-sm truncate font-khmer">${khName}</h4>
-                                <p class="text-slate-400 text-xs truncate">${enName}</p>
-                                <p class="text-slate-500 text-xs truncate">#${user.id} • ${groupName}</p>
+                                <h4 class="text-white font-bold text-sm truncate font-khmer tracking-wide">${khName}</h4>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-slate-400 text-xs font-bold font-mono bg-white/5 px-1.5 py-0.5 rounded">ID:${user.id}</span>
+                                    <span class="text-slate-500 text-[10px] truncate uppercase tracking-wider">${groupName}</span>
+                                </div>
                             </div>
                         </div>
-                        <div class="bg-black/30 rounded-lg p-3 border border-white/5">
+                        <div class="bg-black/40 rounded-xl p-4 border border-white/5">
                             ${timelineHtml}
                         </div>
                     </div>
@@ -694,53 +819,290 @@
             container.innerHTML = newHTML;
         }
 
-        function renderTable(data) {
-            const tbody = document.getElementById('table-body');
-            const aggregation = {};
-            data.forEach(log => {
-                if(!aggregation[log.id]) aggregation[log.id] = { ...log, breakCount: 0, otCount: 0 };
-                aggregation[log.id].breakCount++;
-                if(log.overtime && log.overtime !== "0") aggregation[log.id].otCount++;
+        // --- SPECIFIC ROW DELETE ---
+        function confirmDeleteRow(sheetName, rowIndex) {
+            Swal.fire({
+                title: 'លុបកំណត់ត្រានេះ?',
+                text: "ទិន្នន័យនឹងត្រូវបានលុបចេញពីប្រព័ន្ធ!",
+                icon: 'warning',
+                showCancelButton: true,
+                background: '#121212',
+                color: '#fff',
+                confirmButtonColor: '#e11d48',
+                cancelButtonColor: '#333',
+                confirmButtonText: 'Yes, Delete',
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    deleteRow(sheetName, rowIndex);
+                }
             });
-            const sorted = Object.values(aggregation).sort((a,b) => b.breakCount - a.breakCount);
-            const newHTML = sorted.map(user => {
-                const staffInfo = staffCacheData.find(s => s.id == user.id);
-                const khName = staffInfo ? (staffInfo.name_kh || staffInfo.name_en) : user.name;
-                const enName = staffInfo ? (staffInfo.name_en || "") : "";
-                const groupName = staffInfo ? (staffInfo.group || user.group) : user.group;
-                const imgUrl = user.image || `https://ui-avatars.com/api/?background=random&name=${encodeURIComponent(user.name)}`;
-                const otDisplay = user.otCount > 0 ? `<span class="inline-flex items-center px-2 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-bold font-khmer">${user.otCount} លើក</span>` : `<span class="text-slate-600 text-xs">-</span>`;
-
-                return `
-                    <tr class="hover:bg-white/5 transition-colors group">
-                        <td class="px-6 py-4">
-                            <div class="flex items-center gap-3">
-                                <img src="${imgUrl}" class="w-8 h-8 rounded-full bg-slate-800 object-cover">
-                                <div>
-                                    <div class="font-bold text-white text-sm font-khmer">${khName}</div>
-                                    <div class="text-xs text-slate-500">${enName} #${user.id}</div>
-                                </div>
-                            </div>
-                        </td>
-                        <td class="px-6 py-4"><span class="px-2 py-1 rounded bg-white/5 text-slate-400 text-xs border border-white/5">${groupName}</span></td>
-                        <td class="px-6 py-4 text-center"><span class="font-mono text-white text-sm">${user.breakCount}</span></td>
-                        <td class="px-6 py-4 text-center">${otDisplay}</td>
-                    </tr>
-                `;
-            }).join('');
-            tbody.innerHTML = newHTML;
         }
 
-        // --- NEW ZONE FILTER LOGIC ---
+        async function deleteRow(sheetName, rowIndex) {
+            showLoading("Deleting...");
+            try {
+                const res = await fetch(`${API_URL}/delete-specific-rows`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ itemsToDelete: [{ sheetName, rowIndex }] })
+                });
+                
+                const data = await res.json();
+                if(data.status === 'success') {
+                    manualFetch(); 
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'Deleted!', 
+                        background: '#121212', 
+                        color: '#fff', 
+                        timer: 1000, 
+                        showConfirmButton: false,
+                        customClass: { popup: 'border border-white/10 rounded-2xl' }
+                    });
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch(e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: '#121212', color:'#fff' });
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // --- MANAGE SHEETS (UPDATED: DATE, MONTH, YEAR) ---
+        let manageMode = 'date'; // 'date', 'month', 'year'
+
+        function openManageModal() {
+            document.getElementById('manage-modal').classList.remove('hidden');
+            selectedSheets.clear();
+            document.getElementById('select-all-sheets').checked = false;
+            setManageMode('date'); // Reset to default view
+        }
+
+        function closeManageModal() {
+            document.getElementById('manage-modal').classList.add('hidden');
+        }
+
+        function setManageMode(mode) {
+            manageMode = mode;
+            // Update Tab UI
+            ['date', 'month', 'year'].forEach(m => {
+                document.getElementById(`dm-${m}`).className = `tab-btn font-khmer w-full ${m === mode ? 'active' : ''}`;
+            });
+            
+            selectedSheets.clear();
+            renderSheetList();
+            updateDeleteButton();
+        }
+
+        function renderSheetList() {
+            const container = document.getElementById('sheet-list-container');
+            const selectAllContainer = document.getElementById('select-all-container');
+            const hintText = document.getElementById('manage-hint');
+            container.innerHTML = '';
+            
+            if (availableSheets.length === 0) {
+                container.innerHTML = '<p class="text-center text-slate-500 py-4">No records found.</p>';
+                return;
+            }
+
+            // Only show "Select All" checkbox in Date mode to prevent accidental mass deletion
+            if (manageMode === 'date') {
+                selectAllContainer.classList.remove('hidden');
+                hintText.innerText = 'ជ្រើសរើសកាលបរិច្ឆេទដើម្បីលុប៖';
+            } else {
+                selectAllContainer.classList.add('hidden');
+                hintText.innerText = manageMode === 'month' ? 'ជ្រើសរើសខែដើម្បីលុប (Delete Month):' : 'ជ្រើសរើសឆ្នាំដើម្បីលុប (Delete Year):';
+            }
+
+            // GROUP DATA BASED ON MODE
+            let itemsToRender = [];
+            
+            if (manageMode === 'date') {
+                itemsToRender = [...availableSheets].reverse().map(s => ({ key: s, display: s, count: 1 }));
+            } 
+            else if (manageMode === 'month') {
+                const groups = {};
+                availableSheets.forEach(s => {
+                    const monthKey = s.substring(3); // Remove day (e.g., 12-2025)
+                    if (!groups[monthKey]) groups[monthKey] = 0;
+                    groups[monthKey]++;
+                });
+                itemsToRender = Object.keys(groups).map(k => ({ key: k, display: k, count: groups[k] }));
+            } 
+            else if (manageMode === 'year') {
+                const groups = {};
+                availableSheets.forEach(s => {
+                    const yearKey = s.substring(6); // Remove day and month (e.g., 2025)
+                    if (!groups[yearKey]) groups[yearKey] = 0;
+                    groups[yearKey]++;
+                });
+                itemsToRender = Object.keys(groups).map(k => ({ key: k, display: k, count: groups[k] }));
+            }
+
+            // RENDER ITEMS
+            itemsToRender.forEach(item => {
+                // Check if selected. Logic varies by mode.
+                let isSelected = false;
+                if (manageMode === 'date') {
+                    isSelected = selectedSheets.has(item.key);
+                } else {
+                    // For month/year, check if ALL corresponding sheets are in selectedSheets
+                    const childSheets = availableSheets.filter(s => s.endsWith(item.key));
+                    isSelected = childSheets.length > 0 && childSheets.every(s => selectedSheets.has(s));
+                }
+
+                const el = document.createElement('div');
+                el.className = `flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${isSelected ? 'bg-indigo-600/20 border-indigo-500/50' : 'bg-white/5 border-white/5 hover:bg-white/10'}`;
+                
+                el.onclick = (e) => {
+                    if (e.target.type !== 'checkbox') toggleManageSelection(item.key);
+                };
+
+                el.innerHTML = `
+                    <div class="flex items-center gap-3 w-full">
+                        <input type="checkbox" class="checkbox-custom" ${isSelected ? 'checked' : ''} onclick="toggleManageSelection('${item.key}'); event.stopPropagation();">
+                        <div class="flex justify-between w-full pr-2">
+                            <span class="text-sm font-mono font-bold text-white">${item.display}</span>
+                            ${manageMode !== 'date' ? `<span class="text-xs text-slate-400 bg-white/10 px-2 py-0.5 rounded">${item.count} Sheets</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(el);
+            });
+            
+            // Handle Select All State (Date mode only)
+            if (manageMode === 'date') {
+                const selectAllBox = document.getElementById('select-all-sheets');
+                if (availableSheets.length > 0 && selectedSheets.size === availableSheets.length) {
+                    selectAllBox.checked = true;
+                    selectAllBox.indeterminate = false;
+                } else if (selectedSheets.size > 0) {
+                    selectAllBox.checked = false;
+                    selectAllBox.indeterminate = true;
+                } else {
+                    selectAllBox.checked = false;
+                    selectAllBox.indeterminate = false;
+                }
+            }
+        }
+
+        function toggleManageSelection(key) {
+            if (manageMode === 'date') {
+                if (selectedSheets.has(key)) selectedSheets.delete(key);
+                else selectedSheets.add(key);
+            } else {
+                // If Month or Year, toggle ALL matching sheets
+                const matchingSheets = availableSheets.filter(s => s.endsWith(key));
+                const allSelected = matchingSheets.every(s => selectedSheets.has(s));
+                
+                if (allSelected) {
+                    // Deselect all
+                    matchingSheets.forEach(s => selectedSheets.delete(s));
+                } else {
+                    // Select all
+                    matchingSheets.forEach(s => selectedSheets.add(s));
+                }
+            }
+            renderSheetList();
+            updateDeleteButton();
+        }
+
+        function toggleSelectAllSheets() {
+            const isChecked = document.getElementById('select-all-sheets').checked;
+            if (isChecked) {
+                availableSheets.forEach(sheet => selectedSheets.add(sheet));
+            } else {
+                selectedSheets.clear();
+            }
+            renderSheetList();
+            updateDeleteButton();
+        }
+
+        function updateDeleteButton() {
+            const btn = document.getElementById('btn-confirm-delete');
+            const count = selectedSheets.size;
+            
+            if (count > 0) {
+                btn.disabled = false;
+                btn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i> Delete ${count} Sheets`;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed', 'shadow-none');
+            } else {
+                btn.disabled = true;
+                btn.innerHTML = `<i data-lucide="trash-2" class="w-4 h-4"></i> Delete Selected`;
+                btn.classList.add('opacity-50', 'cursor-not-allowed', 'shadow-none');
+            }
+            lucide.createIcons();
+        }
+
+        function deleteSelectedSheets() {
+            if (selectedSheets.size === 0) return;
+
+            Swal.fire({
+                title: 'Confirm Delete?',
+                html: `Permanently delete <b class="text-rose-500">${selectedSheets.size}</b> dates?`,
+                icon: 'warning',
+                background: '#121212',
+                color: '#fff',
+                showCancelButton: true,
+                confirmButtonColor: '#e11d48',
+                cancelButtonColor: '#333',
+                confirmButtonText: 'Yes, Delete',
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            }).then((result) => {
+                if (result.isConfirmed) performBatchDelete();
+            });
+        }
+
+        async function performBatchDelete() {
+            showLoading("Deleting...");
+            closeManageModal();
+            const sheetsToDelete = Array.from(selectedSheets);
+
+            try {
+                const res = await fetch(`${API_URL}/delete-sheets`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ sheetNames: sheetsToDelete })
+                });
+                
+                const data = await res.json();
+                if (data.status === 'success') {
+                    const resSheets = await fetch(`${API_URL}/available-sheets`);
+                    if(resSheets.ok) availableSheets = await resSheets.json();
+                    
+                    populateFilter('daily'); 
+                    manualFetch();
+                    
+                    Swal.fire({ 
+                        icon: 'success', 
+                        title: 'Deleted Successfully!', 
+                        background: '#121212', 
+                        color: '#fff', 
+                        timer: 1500, 
+                        showConfirmButton: false,
+                        customClass: { popup: 'border border-white/10 rounded-2xl' }
+                    });
+                } else {
+                    throw new Error(data.message);
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: '#121212', color:'#fff' });
+            } finally {
+                hideLoading();
+            }
+        }
+
+        // --- PDF LOGIC ---
         function openPrintModal() { document.getElementById('print-modal').classList.remove('hidden'); setPrintMode('daily'); setZoneMode('all'); }
         function closePrintModal() { document.getElementById('print-modal').classList.add('hidden'); }
         
         function setPrintMode(mode) {
             printMode = mode;
-            document.querySelectorAll('.print-mode-btn').forEach(btn => {
-                btn.className = "print-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold border border-white/5 hover:bg-white/10 transition-all font-khmer";
-            });
-            document.getElementById(`pm-${mode}`).className = "print-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold border border-transparent shadow-lg shadow-indigo-500/20 transition-all font-khmer";
+            document.querySelectorAll('#print-modal .tab-btn').forEach(btn => btn.className = "tab-btn font-khmer");
+            document.getElementById(`pm-${mode}`).className = "tab-btn active font-khmer";
+
             const select = document.getElementById('print-range-select');
             select.innerHTML = '';
             let options = [];
@@ -757,19 +1119,13 @@
 
         function setZoneMode(zone) {
             printZone = zone;
-            document.querySelectorAll('.zone-mode-btn').forEach(btn => {
-                btn.className = "zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-sm font-bold font-khmer border border-white/5 hover:bg-white/10 transition-all";
-            });
-            document.getElementById(`pz-${zone}`).className = "zone-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-sm font-bold font-khmer border border-transparent shadow-lg shadow-indigo-500/20 transition-all";
+            document.querySelectorAll('.zone-mode-btn').forEach(btn => btn.className = "zone-mode-btn bg-white/5 text-slate-400 py-2 rounded-lg text-xs font-bold border border-white/10");
+            document.getElementById(`pz-${zone}`).className = "zone-mode-btn bg-indigo-600 text-white py-2 rounded-lg text-xs font-bold";
         }
 
-        // ===========================================
-        //  SMART PAGINATION + ZONE FILTER (FIXED)
-        // ===========================================
         async function executePrint() {
             const range = document.getElementById('print-range-select').value;
             if (!range) return;
-
             closePrintModal();
             showLoading("Generating Smart PDF...");
 
@@ -785,14 +1141,12 @@
                 let data = json.raw;
                 if (data.length === 0) { alert("No Data Found"); hideLoading(); return; }
 
-                // --- 1. FILTER BY ZONE ---
                 if (printZone !== 'all') {
                     data = data.filter(item => item.area && String(item.area).trim() === printZone);
                 }
                 
                 if (data.length === 0) { alert(`No data found for Zone ${printZone}`); hideLoading(); return; }
 
-                // --- 2. AGGREGATE DATA ---
                 const aggregation = {};
                 
                 data.forEach(log => {
@@ -803,37 +1157,28 @@
                             name: staff ? (staff.name_kh || staff.name_en) : log.name,
                             group: staff ? (staff.group || log.group) : log.group,
                             breakCount: 0,
-                            otCount: 0 // Changed from otMinutes to otCount
+                            otCount: 0 
                         };
                     }
                     aggregation[log.id].breakCount++;
-                    
-                    // NEW: COUNT OVERTIME OCCURRENCES
                     if (log.overtime && log.overtime !== '0') {
                         aggregation[log.id].otCount++;
                     }
                 });
 
                 const allRows = Object.values(aggregation).sort((a, b) => b.breakCount - a.breakCount);
-
-                // --- 3. PAGINATION LOGIC (NO STATS) ---
-                // REDUCED ROWS to fit larger fonts
-                const rowsPerPage = 21; 
+                const rowsPerPage = 26; 
                 const pages = [];
-                
                 let remaining = [...allRows];
-                let rowCounter = 1; // Global counter for "No." column
+                let rowCounter = 1; 
 
                 while(remaining.length > 0) {
                     const batch = remaining.slice(0, rowsPerPage);
-                    // Add index property to each row for this page
                     const batchWithIndex = batch.map(row => ({ ...row, index: rowCounter++ }));
-                    
                     pages.push(batchWithIndex);
                     remaining = remaining.slice(rowsPerPage);
                 }
 
-                // --- 4. GENERATE PDF ---
                 const { jsPDF } = window.jspdf;
                 const pdf = new jsPDF('p', 'mm', 'a4');
                 const pdfWidth = 210; 
@@ -841,8 +1186,6 @@
 
                 for (let i = 0; i < pages.length; i++) {
                     const rows = pages[i];
-                    
-                    // Render HTML for this specific page
                     staging.innerHTML = generatePageHTML(rows, i + 1, pages.length, range, printZone);
 
                     const canvas = await window.html2canvas(staging.querySelector('.print-page'), {
@@ -852,16 +1195,13 @@
                     });
 
                     const imgData = canvas.toDataURL('image/png');
-                    
                     if (i > 0) pdf.addPage();
                     const imgProps = pdf.getImageProperties(imgData);
                     const pdfImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-                    
                     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfImgHeight);
                 }
 
                 pdf.save(`Report_${range}_Zone${printZone}.pdf`);
-
             } catch (e) {
                 console.error(e);
                 alert("PDF Error: " + e.message);
@@ -871,9 +1211,7 @@
             }
         }
 
-        // --- HTML TEMPLATE GENERATOR ---
         function generatePageHTML(rows, pageNum, totalPages, range, zone) {
-            
             const headerHTML = `
                 <div class="flex justify-between items-end border-b-2 border-indigo-600 pb-4 mb-6" style="margin-bottom: 24px;">
                     <div>
@@ -890,7 +1228,6 @@
                 </div>
             `;
 
-            // Updated HTML with "No." column and larger fonts
             const rowsHTML = rows.map((row, index) => `
                 <tr class="${index % 2 === 0 ? 'bg-white' : 'bg-slate-50'}">
                     <td class="text-center font-bold text-slate-500">${row.index}</td>
@@ -908,7 +1245,6 @@
                 <div class="print-page">
                     <div>
                         ${headerHTML}
-                        
                         <table class="print-table">
                             <thead>
                                 <tr>
@@ -925,15 +1261,12 @@
                             </tbody>
                         </table>
                     </div>
-
                     <div style="text-align: right; border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 16px;">
                         <p style="color: #94a3b8; font-size: 12px;">Page ${pageNum} of ${totalPages} • Staff Hub System</p>
                     </div>
                 </div>
             `;
         }
-
-        lucide.createIcons();
     </script>
 </body>
 </html>

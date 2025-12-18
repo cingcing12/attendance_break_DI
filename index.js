@@ -531,7 +531,10 @@ app.post('/delete-specific-rows', async (req, res) => {
             const sheetId = titleToId[item.sheetName];
             if (sheetId) {
                 if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
-                sheetsMap[sheetId].push(item.rowIndex - 1); 
+                // Only allow deletion if rowIndex > 1 (Header protection)
+                if (item.rowIndex > 1) {
+                    sheetsMap[sheetId].push(item.rowIndex - 1); 
+                }
             }
         });
 
