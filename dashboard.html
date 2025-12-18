@@ -11,6 +11,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
     <script>
         tailwind.config = {
@@ -256,21 +257,31 @@
     <script>
         const API_URL = "https://attendance-break-di.onrender.com"; 
         
+        // --- SOCKET IO SETUP ---
+        // This connects to the server and listens for updates
+        const socket = io(API_URL);
+        
+        socket.on('connect', () => {
+            console.log("Connected to Real-time Server");
+        });
+
+        // When server says "data_updated", we fetch new data immediately
+        socket.on('data_updated', () => {
+            console.log("Change detected on another device, refreshing...");
+            manualFetch(); // Refresh data
+        });
+
         let currentMode = 'daily';
         let availableSheets = [];
         let fetchedData = []; 
-        let debounceTimer; 
         let printMode = 'daily';
         let staffCacheData = [];
         let pollingInterval = null;
 
         // --- AUTHENTICATION LOGIC ---
 
-        // Check if user is already logged in (localStorage)
         if(localStorage.getItem('admin_token')) {
             showDashboard();
-        } else {
-            // Icons are initialized automatically by script below
         }
 
         async function handleLogin(e) {
@@ -280,7 +291,6 @@
             const btn = document.querySelector('button[type="submit"]');
             const btnText = document.getElementById('btn-text');
 
-            // Loading state
             btn.disabled = true;
             btnText.innerText = "កំពុងផ្ទៀងផ្ទាត់...";
             
@@ -294,7 +304,7 @@
                 const data = await res.json();
 
                 if (data.success) {
-                    localStorage.setItem('admin_token', data.token); // PERSISTENCE
+                    localStorage.setItem('admin_token', data.token);
                     
                     Swal.fire({
                         icon: 'success',
@@ -342,10 +352,8 @@
             document.getElementById('login-view').classList.add('hidden');
             document.getElementById('dashboard-view').classList.remove('hidden');
             document.getElementById('dashboard-view').classList.add('flex');
-            initDashboard(); // Only load data now
+            initDashboard();
         }
-
-        // --- DASHBOARD DATA LOGIC (Only runs after login) ---
 
         async function initDashboard() {
             lucide.createIcons();
@@ -366,6 +374,8 @@
                 
                 populateFilter('daily', `${day}-${month}-${year}`);
                 await fetchReport(false); 
+                
+                // Polling reduced to 10 seconds just as a backup
                 startPolling();
 
             } catch (error) {
@@ -378,7 +388,8 @@
 
         function startPolling() {
             if(pollingInterval) clearInterval(pollingInterval);
-            pollingInterval = setInterval(() => { fetchReport(true); }, 3000); 
+            // Backup polling every 10 seconds in case socket fails
+            pollingInterval = setInterval(() => { fetchReport(true); }, 10000); 
         }
 
         function showLoading(text = "កំពុងផ្ទុកទិន្នន័យ") {
@@ -451,10 +462,7 @@
                 updateStats(fetchedData);
                 renderView();
             } catch (e) {
-                console.error("Polling Error:", e);
-                if (!isBackground) {
-                    // Only alert if manual load fails, prevent alert spam on polling
-                }
+                console.error("Fetch Error:", e);
             } finally {
                 if (!isBackground) hideLoading();
             }
@@ -599,7 +607,6 @@
             tbody.innerHTML = newHTML;
         }
 
-        // Print functions
         function openPrintModal() { document.getElementById('print-modal').classList.remove('hidden'); setPrintMode('daily'); }
         function closePrintModal() { document.getElementById('print-modal').classList.add('hidden'); }
         function setPrintMode(mode) {
@@ -693,7 +700,6 @@
             finally { hideLoading(); document.getElementById('print-container').innerHTML = ''; }
         }
 
-        // Initialize Icons
         lucide.createIcons();
     </script>
 </body>

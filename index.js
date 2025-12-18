@@ -3,8 +3,19 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { google } = require('googleapis');
+const http = require('http'); // Import HTTP
+const { Server } = require("socket.io"); // Import Socket.io
 
 const app = express();
+const server = http.createServer(app); // Create HTTP server
+// Setup Socket.io with CORS
+const io = new Server(server, {
+    cors: {
+        origin: "*", // Allow connections from any device
+        methods: ["GET", "POST"]
+    }
+});
+
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
@@ -28,18 +39,33 @@ const auth = new google.auth.GoogleAuth({
 });
 
 // ==========================
-// CACHING (High Performance)
+// CACHING & CONCURRENCY
 // ==========================
 let STAFF_CACHE = { data: null, timestamp: 0, duration: 10 * 60 * 1000 };
-let BREAKS_CACHE = { data: null, timestamp: 0, duration: 5 * 1000 };
+let BREAKS_CACHE = { data: null, timestamp: 0, duration: 2 * 1000 }; // Short cache for reads
 let fetchStaffPromise = null;
 let fetchBreaksPromise = null;
+
+// WRITE LOCK: Prevents multiple devices from writing to Google Sheets at the exact same time
+let isWriting = false; 
+const waitForLock = () => {
+    return new Promise(resolve => {
+        const check = () => {
+            if (!isWriting) {
+                isWriting = true;
+                resolve();
+            } else {
+                setTimeout(check, 100); // Check again in 100ms
+            }
+        };
+        check();
+    });
+};
+const releaseLock = () => { isWriting = false; };
 
 // ==========================
 // HELPERS
 // ==========================
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
 function getCambodiaDate() {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" }));
 }
@@ -224,6 +250,26 @@ async function getCachedStaffData(sheets) {
     return fetchStaffPromise;
 }
 
+// Force fetch fresh data for concurrency checks
+async function getFreshBreaks(sheets) {
+    const sheet = await ensureTodaySheet(sheets);
+    const r = await sheets.spreadsheets.values.get({ 
+        spreadsheetId: WRITE_SPREADSHEET_ID, 
+        range: `'${sheet}'!A:I` 
+    });
+    const rows = r.data.values || [];
+    
+    // We only need minimal data for logic checking
+    return rows.slice(1).map((row) => ({
+        id: row[0],
+        timeOut: row[3],
+        timeIn: row[4],
+        area: row[5],
+        card: row[8]
+    })).filter(r => r.timeOut && !r.timeIn);
+}
+
+// Cached version for frontend display
 async function getCachedBreaks(sheets) {
     const now = Date.now();
     if (BREAKS_CACHE.data && (now - BREAKS_CACHE.timestamp < BREAKS_CACHE.duration)) {
@@ -256,7 +302,7 @@ async function getCachedBreaks(sheets) {
                     area: row[5],
                     date: row[6],
                     overtime: row[7],
-                    card: row[8] || '', // Ensures CARD data is sent
+                    card: row[8] || '', 
                     image: imgUrl
                 };
             }).filter(r => r.timeOut && !r.timeIn);
@@ -277,7 +323,37 @@ async function getCachedBreaks(sheets) {
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - Card Update'));
+app.get('/', (req, res) => res.send('Staff Hub API - Multi-Device Ready'));
+
+app.post('/login', (req, res) => {
+    const { email, password } = req.body;
+    if(email === 'admin@company.com' && password === 'admin123') {
+        res.json({ success: true, token: 'admin_secret_token_123' });
+    } else {
+        res.status(401).json({ success: false, message: 'Invalid Credentials' });
+    }
+});
+
+app.get('/available-sheets', async (req, res) => {
+    try {
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+        
+        const response = await sheets.spreadsheets.get({
+            spreadsheetId: WRITE_SPREADSHEET_ID
+        });
+
+        const sheetsList = response.data.sheets;
+        const dateSheets = sheetsList
+            .map(s => s.properties.title)
+            .filter(title => /^\d{2}-\d{2}-\d{4}$/.test(title));
+
+        res.json(dateSheets);
+    } catch (error) {
+        console.error("Error fetching sheets:", error);
+        res.status(500).json([]);
+    }
+});
 
 app.get('/staff', async (req, res) => {
     try {
@@ -301,19 +377,80 @@ app.get('/active-breaks', async (req, res) => {
     }
 });
 
+app.get('/report', async (req, res) => {
+    const { filter } = req.query; 
+    
+    if(!filter || filter === 'undefined') return res.json({ raw: [] });
+
+    try {
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+        const staffCache = await getCachedStaffData(sheets);
+        const metaData = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+        const allSheetNames = metaData.data.sheets.map(s => s.properties.title);
+        const sheetsToFetch = allSheetNames.filter(name => name.endsWith(filter));
+
+        if(sheetsToFetch.length === 0) return res.json({ raw: [] });
+
+        const fetchPromises = sheetsToFetch.map(sheetName => 
+            sheets.spreadsheets.values.get({ 
+                spreadsheetId: WRITE_SPREADSHEET_ID, 
+                range: `'${sheetName}'!A:I` 
+            }).then(res => res.data.values || [])
+        );
+
+        const results = await Promise.all(fetchPromises);
+        let aggregatedRows = [];
+        results.forEach(sheetRows => { aggregatedRows = aggregatedRows.concat(sheetRows.slice(1)); });
+        
+        const allData = aggregatedRows.map((row) => {
+            const id = row[0] ? String(row[0]).trim() : null;
+            const name = row[1];
+            let imgUrl = '';
+            if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
+            else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
+
+            return {
+                id: id || 'Unknown', 
+                name: name || 'Unknown', 
+                group: row[2],
+                timeOut: row[3],
+                timeIn: row[4],
+                area: row[5],
+                date: row[6],
+                overtime: row[7],
+                image: imgUrl
+            };
+        });
+
+        res.json({ raw: allData });
+    } catch (error) {
+        console.error("Report Error:", error);
+        res.json({ raw: [] });
+    }
+});
+
+// === CONCURRENCY SAFE WRITE ENDPOINTS ===
+
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
     if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
 
     try {
+        // 1. Wait for Lock (Prevents multiple devices from writing at the same time)
+        await waitForLock();
+
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         
-        BREAKS_CACHE.timestamp = 0; 
-        const activeBreaks = await getCachedBreaks(sheets);
+        // 2. Fetch Fresh Data (Do not use cache here to avoid duplication)
+        const activeBreaks = await getFreshBreaks(sheets);
         
         const card = getNextAvailableCard(activeBreaks, area);
-        if (!card) return res.status(400).json({ error: 'No available card in this zone' });
+        if (!card) {
+            releaseLock();
+            return res.status(400).json({ error: 'No available card in this zone' });
+        }
 
         const timeStr = getCurrentTimeString();
         const dateStr = getTodaySheetName();
@@ -330,11 +467,16 @@ app.post('/break', async (req, res) => {
             resource: { values }
         });
 
-        BREAKS_CACHE.timestamp = 0;
+        // 3. Clear Cache and Notify All Clients
+        BREAKS_CACHE.timestamp = 0; 
+        io.emit('data_updated'); // <--- Real-time Trigger
         res.json({ status: 'success', timeOut: timeStr, card });
+
     } catch (err) {
         console.error(err);
         res.status(500).json({ status: 'error' });
+    } finally {
+        releaseLock(); // Always release lock
     }
 });
 
@@ -343,10 +485,13 @@ app.post('/timein', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'ID required' });
 
     try {
+        await waitForLock(); // 1. Wait Lock
+
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         const sheet = getTodaySheetName();
 
+        // 2. Fetch and find row
         const r = await sheets.spreadsheets.values.get({ 
             spreadsheetId: WRITE_SPREADSHEET_ID, 
             range: `'${sheet}'!A:I` 
@@ -366,7 +511,10 @@ app.post('/timein', async (req, res) => {
             }
         }
 
-        if (rowIndex === -1) return res.status(404).json({ status: 'not_found' });
+        if (rowIndex === -1) {
+            releaseLock();
+            return res.status(404).json({ status: 'not_found' });
+        }
 
         const now = getCambodiaDate();
         const diff = Math.floor((now - parseTimeStr(outTime)) / 60000);
@@ -384,14 +532,27 @@ app.post('/timein', async (req, res) => {
             }
         });
 
+        // 3. Clear Cache and Notify
         BREAKS_CACHE.timestamp = 0;
+        io.emit('data_updated'); // <--- Real-time Trigger
         res.json({ status: 'success', timeIn: timeInStr });
     } catch (err) {
         console.error(err);
         res.status(500).json({ status: 'error' });
+    } finally {
+        releaseLock();
     }
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+// SOCKET CONNECTION LOG
+io.on('connection', (socket) => {
+    console.log('New device connected:', socket.id);
+    socket.on('disconnect', () => {
+        console.log('Device disconnected:', socket.id);
+    });
+});
+
+// Change app.listen to server.listen
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on port http://localhost:${PORT}`);
 });

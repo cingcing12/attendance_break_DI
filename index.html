@@ -8,6 +8,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Noto+Sans+Khmer:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
 
     <script>
         tailwind.config = {
@@ -258,7 +260,17 @@
     </div>
 
     <script>
-        const API_URL = "https://attendance-break-di.onrender.com";
+        // Use http://localhost:3000 if testing locally, otherwise use your Render URL
+        const API_URL = "https://attendance-break-di.onrender.com"; 
+        
+        // 2. CONNECT TO SOCKET
+        const socket = io(API_URL);
+
+        // 3. LISTEN FOR CHANGES
+        socket.on('data_updated', () => {
+            console.log("Remote update detected, refreshing...");
+            fetchData(false); // Refresh data silently
+        });
         
         let allStaff = [];
         let activeBreaks = [];
@@ -297,8 +309,8 @@
                 // Fetch initial
                 await fetchData(true);
                 
-                // Polling at 5 seconds
-                refreshTimer = setInterval(() => fetchData(false), 5000);
+                // Polling as a fallback every 10 seconds (reduced from 5s since we have sockets)
+                refreshTimer = setInterval(() => fetchData(false), 10000);
                 minuteTimer = setInterval(() => updateTimeDisplays(), 1000);
                 
                 document.getElementById('loader-initial').innerHTML = '';
@@ -404,7 +416,7 @@
         }
 
         // ============================================
-        //  RENDER STAFF SEARCH LIST (UPDATED UI)
+        //  RENDER STAFF SEARCH LIST
         // ============================================
         function renderNextBatch() {
             const grid = document.getElementById('staffGrid');
@@ -464,7 +476,7 @@
         }
 
         // ============================================
-        //  RENDER ACTIVE BREAKS (UPDATED UI)
+        //  RENDER ACTIVE BREAKS
         // ============================================
         function renderActiveBreaks(list) {
             const grid = document.getElementById('activeGrid');
