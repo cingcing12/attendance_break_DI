@@ -714,6 +714,68 @@ app.post('/timein', async (req, res) => {
     } catch (err) { console.error(err); res.status(500).json({ status: 'error' }); } finally { releaseLock(); }
 });
 
+// === NEW: DELETE CARD ROUTE ===
+app.post('/cards/delete', async (req, res) => {
+    const { cardId } = req.body;
+    if (!cardId) return res.status(400).json({ error: 'Missing Card ID' });
+
+    try {
+        await waitForLock();
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+
+        // 1. Get current data to find the row index
+        const r = await sheets.spreadsheets.values.get({ 
+            spreadsheetId: WRITE_SPREADSHEET_ID, 
+            range: `'${SETTINGS_SHEET_NAME}'!A:A` 
+        });
+        const rows = r.data.values || [];
+        
+        let rowIndex = -1;
+        // Find the row (Start from index 0)
+        for(let i=0; i<rows.length; i++) {
+            if(rows[i][0] === cardId) {
+                rowIndex = i; // 0-based index for deleteDimension
+                break;
+            }
+        }
+
+        if (rowIndex === -1) {
+            releaseLock();
+            return res.status(404).json({ error: 'Card not found' });
+        }
+
+        // 2. Delete the specific row
+        const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+        const sheetId = sheetMeta.data.sheets.find(s => s.properties.title === SETTINGS_SHEET_NAME).properties.sheetId;
+
+        await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: WRITE_SPREADSHEET_ID,
+            resource: {
+                requests: [{
+                    deleteDimension: {
+                        range: {
+                            sheetId: sheetId,
+                            dimension: "ROWS",
+                            startIndex: rowIndex,
+                            endIndex: rowIndex + 1
+                        }
+                    }
+                }]
+            }
+        });
+
+        SETTINGS_CACHE.timestamp = 0; // Clear cache
+        res.json({ status: 'success' });
+
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: "Delete failed: " + e.message });
+    } finally {
+        releaseLock();
+    }
+});
+
 // SOCKET LOGGING
 io.on('connection', (socket) => {
     console.log('Device connected:', socket.id);
