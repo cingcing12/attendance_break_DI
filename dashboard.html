@@ -32,11 +32,16 @@
                     },
                     animation: {
                         'enter': 'enter 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+                        'slide-up': 'slideUp 0.3s ease-out forwards',
                     },
                     keyframes: {
                         enter: {
                             '0%': { opacity: '0', transform: 'translateY(10px)' },
                             '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        slideUp: {
+                            '0%': { transform: 'translateY(100%)', opacity: '0' },
+                            '100%': { transform: 'translateY(0)', opacity: '1' },
                         }
                     }
                 }
@@ -86,12 +91,23 @@
             padding: 4px 8px; border-radius: 6px; margin: 2px;
             cursor: pointer; transition: all 0.2s;
             border: 1px solid transparent;
+            position: relative;
         }
         .card-tag-A { background: rgba(34, 211, 238, 0.1); color: #22d3ee; border-color: rgba(34, 211, 238, 0.2); }
         .card-tag-A:hover { background: rgba(34, 211, 238, 0.2); transform: translateY(-1px); }
         
         .card-tag-B { background: rgba(251, 113, 133, 0.1); color: #fb7185; border-color: rgba(251, 113, 133, 0.2); }
         .card-tag-B:hover { background: rgba(251, 113, 133, 0.2); transform: translateY(-1px); }
+
+        /* Selection Mode Styles */
+        .card-tag.selected {
+            background: #6366f1 !important;
+            color: white !important;
+            border-color: #818cf8 !important;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+            transform: scale(1.05);
+            z-index: 10;
+        }
 
         /* Print Hidden */
         #print-staging-area { position: fixed; top: 0; left: -9999px; z-index: -50; }
@@ -328,18 +344,23 @@
                 </div>
             </div>
 
-            <div id="section-settings" class="p-6 md:p-12 max-w-[1600px] mx-auto hidden animate-enter">
-                <header class="flex justify-between items-end mb-10">
+            <div id="section-settings" class="p-6 md:p-12 max-w-[1600px] mx-auto hidden animate-enter relative">
+                <header class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-10 gap-4">
                     <div>
                         <h2 class="text-3xl font-bold text-white font-khmer mb-2">ការកំណត់កាត (Card Settings)</h2>
                         <p class="text-slate-400 text-sm">Manage Card Zones (DD_01 to DD_150)</p>
                     </div>
-                    <button onclick="addNewCardModal()" class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20">
-                        <i data-lucide="plus" class="w-4 h-4"></i> Add Card
-                    </button>
+                    <div class="flex gap-3 w-full sm:w-auto">
+                         <button id="btn-toggle-select" onclick="toggleCardSelectMode()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm transition-all">
+                            <i data-lucide="check-square" class="w-4 h-4"></i> Select Cards
+                        </button>
+                        <button onclick="addNewCardModal()" class="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-all shadow-lg shadow-indigo-900/20">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Add Card
+                        </button>
+                    </div>
                 </header>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
                     <div class="glass-panel rounded-3xl p-6 border-cyan-500/20">
                         <div class="flex items-center justify-between mb-6">
                             <h3 class="text-xl font-bold text-cyan-400 font-khmer flex items-center gap-2">
@@ -360,9 +381,29 @@
                         <div id="container-zone-B" class="flex flex-wrap gap-2 content-start min-h-[300px]"></div>
                     </div>
                 </div>
+
             </div>
 
         </main>
+    </div>
+
+    <div id="batch-action-bar" class="fixed bottom-6 right-6 bg-[#1a1a1a] border border-white/10 p-2 rounded-2xl shadow-2xl flex items-center gap-2 z-[999] animate-slide-up hidden">
+        <div class="px-4 text-white font-bold text-sm border-r border-white/10 mr-2">
+            <span id="selected-count">0</span> Selected
+        </div>
+        <button onclick="performBatchMove('A')" class="px-4 py-2 rounded-lg bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20 text-xs font-bold transition-colors">
+            Move to A
+        </button>
+        <button onclick="performBatchMove('B')" class="px-4 py-2 rounded-lg bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 text-xs font-bold transition-colors">
+            Move to B
+        </button>
+        <div class="w-px h-6 bg-white/10 mx-1"></div>
+        <button onclick="performBatchDelete()" class="px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors">
+            Delete
+        </button>
+        <button onclick="toggleCardSelectMode()" class="ml-2 p-2 rounded-full hover:bg-white/10 text-slate-400">
+            <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
     </div>
 
     <div id="loading-overlay" class="fixed inset-0 flex flex-col items-center justify-center hidden z-[100] bg-black/80 backdrop-blur-md">
@@ -497,13 +538,13 @@
             
             document.getElementById('section-dashboard').classList.add('hidden');
             document.getElementById('section-attendance').classList.add('hidden');
-            document.getElementById('section-settings').classList.add('hidden'); // New
+            document.getElementById('section-settings').classList.add('hidden');
             
             const target = document.getElementById(`section-${page}`);
             target.classList.remove('hidden');
             target.classList.add('animate-enter');
             
-            if(page === 'settings') loadSettings(); // New: Load settings
+            if(page === 'settings') loadSettings();
 
             lucide.createIcons();
         }
@@ -1313,14 +1354,19 @@
         }
 
         // ============================================
-        // NEW: CARD MANAGEMENT FUNCTIONS
+        // UPDATED: CARD MANAGEMENT WITH BATCH ACTIONS
         // ============================================
         
+        let isCardSelectMode = false;
+        let selectedCardIds = new Set();
+        let cachedCards = []; // Store fetched cards locally to re-render quickly
+
         async function loadSettings() {
             showLoading("Loading Cards...");
             try {
                 const res = await fetch(`${API_URL}/cards`);
                 const cards = await res.json();
+                cachedCards = cards; // Cache the data
                 renderCardSettings(cards);
             } catch(e) {
                 console.error(e);
@@ -1328,6 +1374,31 @@
             } finally {
                 hideLoading();
             }
+        }
+
+        function toggleCardSelectMode() {
+            isCardSelectMode = !isCardSelectMode;
+            selectedCardIds.clear(); // Reset selection on toggle
+            
+            // Update UI Button style
+            const btn = document.getElementById('btn-toggle-select');
+            const actionBar = document.getElementById('batch-action-bar');
+            
+            if (isCardSelectMode) {
+                btn.classList.remove('bg-white/5');
+                btn.classList.add('bg-indigo-600', 'border-indigo-500');
+                btn.innerHTML = `<i data-lucide="x-square" class="w-4 h-4"></i> Cancel Selection`;
+                actionBar.classList.remove('hidden');
+            } else {
+                btn.classList.add('bg-white/5');
+                btn.classList.remove('bg-indigo-600', 'border-indigo-500');
+                btn.innerHTML = `<i data-lucide="check-square" class="w-4 h-4"></i> Select Cards`;
+                actionBar.classList.add('hidden');
+            }
+            
+            updateBatchActionBar();
+            renderCardSettings(cachedCards); // Re-render with new mode
+            lucide.createIcons();
         }
 
         function renderCardSettings(cards) {
@@ -1347,12 +1418,17 @@
 
             cards.forEach(card => {
                 const el = document.createElement('div');
-                // Determine style based on zone
                 const styleClass = card.zone === 'A' ? 'card-tag-A' : 'card-tag-B';
+                const isSelected = selectedCardIds.has(card.cardId);
                 
-                el.className = `card-tag ${styleClass}`;
+                el.className = `card-tag ${styleClass} ${isSelected ? 'selected' : ''}`;
                 el.innerText = card.cardId;
-                el.onclick = () => openCardEdit(card.cardId, card.zone);
+                
+                if (isCardSelectMode) {
+                    el.onclick = () => toggleCardSelection(card.cardId);
+                } else {
+                    el.onclick = () => openCardEdit(card.cardId, card.zone);
+                }
 
                 if (card.zone === 'A') {
                     containerA.appendChild(el);
@@ -1367,6 +1443,103 @@
             countB.innerText = `${bCount} Cards`;
         }
 
+        function toggleCardSelection(cardId) {
+            if (selectedCardIds.has(cardId)) {
+                selectedCardIds.delete(cardId);
+            } else {
+                selectedCardIds.add(cardId);
+            }
+            renderCardSettings(cachedCards); // Re-render to show visual change
+            updateBatchActionBar();
+        }
+
+        function updateBatchActionBar() {
+            document.getElementById('selected-count').innerText = selectedCardIds.size;
+        }
+
+        // --- BATCH ACTION: DELETE ---
+        function performBatchDelete() {
+            if (selectedCardIds.size === 0) return;
+            
+            Swal.fire({
+                title: 'Delete Selected?',
+                html: `Are you sure you want to delete <b class="text-rose-500">${selectedCardIds.size}</b> cards?`,
+                icon: 'warning',
+                background: '#121212',
+                color: '#fff',
+                showCancelButton: true,
+                confirmButtonColor: '#e11d48',
+                confirmButtonText: 'Yes, Delete All',
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    showLoading(`Deleting ${selectedCardIds.size} cards...`);
+                    const cardsToDelete = Array.from(selectedCardIds);
+                    
+                    try {
+                        // Loop requests because server handles queueing
+                        await Promise.all(cardsToDelete.map(id => 
+                            fetch(`${API_URL}/cards/delete`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ cardId: id })
+                            })
+                        ));
+                        
+                        toggleCardSelectMode(); // Exit mode
+                        loadSettings(); // Reload
+                        Swal.fire({ icon: 'success', title: 'Batch Delete Complete', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background:'#121212', color:'#fff' });
+                    } catch (e) {
+                        Swal.fire({ icon: 'error', title: 'Error during batch delete' });
+                    } finally {
+                        hideLoading();
+                    }
+                }
+            });
+        }
+
+        // --- BATCH ACTION: MOVE ---
+        function performBatchMove(targetZone) {
+            if (selectedCardIds.size === 0) return;
+
+            Swal.fire({
+                title: `Move to Zone ${targetZone}?`,
+                html: `Move <b class="text-indigo-400">${selectedCardIds.size}</b> cards to Zone ${targetZone}?`,
+                icon: 'question',
+                background: '#121212',
+                color: '#fff',
+                showCancelButton: true,
+                confirmButtonColor: '#6366f1',
+                confirmButtonText: `Yes, Move to ${targetZone}`,
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            }).then(async (result) => {
+                if (result.isConfirmed) {
+                    showLoading(`Moving cards...`);
+                    const cardsToMove = Array.from(selectedCardIds);
+                    
+                    try {
+                         // Loop requests because server handles queueing
+                        await Promise.all(cardsToMove.map(id => 
+                            fetch(`${API_URL}/cards/update`, {
+                                method: 'POST',
+                                headers: {'Content-Type': 'application/json'},
+                                body: JSON.stringify({ cardId: id, zone: targetZone })
+                            })
+                        ));
+
+                        toggleCardSelectMode(); // Exit mode
+                        loadSettings(); // Reload
+                        Swal.fire({ icon: 'success', title: 'Batch Move Complete', toast: true, position: 'top-end', timer: 1500, showConfirmButton: false, background:'#121212', color:'#fff' });
+                    } catch (e) {
+                        Swal.fire({ icon: 'error', title: 'Error during batch move' });
+                    } finally {
+                        hideLoading();
+                    }
+                }
+            });
+        }
+
+        // --- SINGLE CARD EDIT (Old Logic Preserved) ---
         function openCardEdit(cardId, currentZone) {
             Swal.fire({
                 title: `Edit Card: ${cardId}`,
@@ -1392,38 +1565,20 @@
                 `,
                 background: '#121212',
                 color: '#fff',
-                
-                // Button Configuration
                 showCancelButton: true,
-                showDenyButton: true, // This enables the third button
-                
+                showDenyButton: true, 
                 confirmButtonColor: '#6366f1',
                 confirmButtonText: '<i class="fa fa-save"></i> Save Changes',
-                
-                denyButtonColor: '#e11d48', // Red color
+                denyButtonColor: '#e11d48', 
                 denyButtonText: '<i class="fa fa-trash"></i> Delete Card',
-                
                 cancelButtonColor: '#333',
-                
-                customClass: { 
-                    popup: 'border border-white/10 rounded-2xl',
-                    actions: 'gap-3'
-                },
-
-                didOpen: () => {
-                    // Re-initialize icons inside modal if needed, though Lucide usually runs on load
-                    if(typeof lucide !== 'undefined') lucide.createIcons();
-                },
-
-                preConfirm: () => {
-                    return document.getElementById('swal-zone').value;
-                }
+                customClass: { popup: 'border border-white/10 rounded-2xl', actions: 'gap-3' },
+                didOpen: () => { if(typeof lucide !== 'undefined') lucide.createIcons(); },
+                preConfirm: () => { return document.getElementById('swal-zone').value; }
             }).then((result) => {
                 if (result.isConfirmed) {
-                    // SAVE LOGIC
                     saveCard(cardId, result.value);
                 } else if (result.isDenied) {
-                    // DELETE LOGIC
                     confirmDeleteCard(cardId);
                 }
             });
@@ -1442,9 +1597,7 @@
                 confirmButtonText: 'Yes, Delete it',
                 customClass: { popup: 'border border-white/10 rounded-2xl' }
             }).then((result) => {
-                if (result.isConfirmed) {
-                    deleteCard(cardId);
-                }
+                if (result.isConfirmed) deleteCard(cardId);
             });
         }
 
@@ -1458,31 +1611,14 @@
                 });
                 
                 const data = await res.json();
-                
                 if (res.ok) {
-                    loadSettings(); // Reload the grid
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: 'Card Deleted', 
-                        toast: true, 
-                        position: 'top-end', 
-                        showConfirmButton: false, 
-                        timer: 1500,
-                        background: '#121212',
-                        color: '#fff' 
-                    });
+                    loadSettings(); 
+                    Swal.fire({ icon: 'success', title: 'Card Deleted', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500, background: '#121212', color: '#fff' });
                 } else {
                     throw new Error(data.error || 'Failed to delete');
                 }
             } catch(e) {
-                console.error(e);
-                Swal.fire({ 
-                    icon: 'error', 
-                    title: 'Error', 
-                    text: e.message,
-                    background: '#121212', 
-                    color: '#fff'
-                });
+                Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: '#121212', color: '#fff' });
             } finally {
                 hideLoading();
             }
@@ -1533,17 +1669,8 @@
                     body: JSON.stringify({ cardId, zone })
                 });
                 if(res.ok) {
-                    loadSettings(); // Reload UI
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: 'Saved', 
-                        toast: true, 
-                        position: 'top-end', 
-                        showConfirmButton: false, 
-                        timer: 1500,
-                        background: '#121212',
-                        color: '#fff' 
-                    });
+                    loadSettings(); 
+                    Swal.fire({ icon: 'success', title: 'Saved', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500, background: '#121212', color: '#fff' });
                 } else {
                     throw new Error('Failed to save');
                 }
