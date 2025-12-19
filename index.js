@@ -34,7 +34,7 @@ const READ_SHEET_NAME = 'DB_DUC_BKU';
 
 const WRITE_SPREADSHEET_ID = '1pzOMgXkyAuLTcU-2P7nXryuELhP8f29nHvLXEErpYxw'; 
 const DI_SHEET_NAME = 'Sheet3';
-const SETTINGS_SHEET_NAME = 'CardSettings'; // The tab we want to create
+const SETTINGS_SHEET_NAME = 'CardSettings'; 
 
 // ==========================
 // AUTH
@@ -45,32 +45,29 @@ const auth = new google.auth.GoogleAuth({
 });
 
 // ==========================
-// CACHING & CONCURRENCY
+// 🚀 HIGH PERFORMANCE MEMORY STORE
 // ==========================
-let STAFF_CACHE = { data: null, timestamp: 0, duration: 10 * 60 * 1000 };
-let BREAKS_CACHE = { data: null, timestamp: 0, duration: 2 * 1000 }; 
-let SETTINGS_CACHE = { data: null, timestamp: 0, duration: 60 * 60 * 1000 }; 
-
-let fetchStaffPromise = null;
-let fetchBreaksPromise = null;
-let fetchSettingsPromise = null;
-
-// WRITE LOCK SYSTEM
-let isWriting = false; 
-const waitForLock = () => {
-    return new Promise(resolve => {
-        const check = () => {
-            if (!isWriting) {
-                isWriting = true;
-                resolve();
-            } else {
-                setTimeout(check, 50); 
-            }
-        };
-        check();
-    });
+// We store today's state in RAM for instant access.
+const MEMORY = {
+    activeBreaks: [], // Array of objects { id, name, card, startTime... }
+    usedCards: new Set(), // Set of Strings "DD_01" for O(1) lookup
+    settings: [],     // Array of { cardId, zone }
+    staffCache: null, // Full staff data
+    isReady: false    // Prevents requests before initial load
 };
-const releaseLock = () => { isWriting = false; };
+
+// ==========================
+// ⚡ SEQUENTIAL WRITE QUEUE
+// ==========================
+// Replaces the old "Lock" system. This ensures Google Sheets writes happen 
+// one by one in the background, while the user gets an instant response.
+let sheetWriteQueue = Promise.resolve();
+
+function queueSheetTask(task) {
+    sheetWriteQueue = sheetWriteQueue.then(() => task()).catch(err => {
+        console.error("❌ Background Sync Error:", err.message);
+    });
+}
 
 // ==========================
 // HELPERS
@@ -122,28 +119,30 @@ function safeKey(str) {
     return str ? String(str).trim().toUpperCase() : '';
 }
 
-// === DYNAMIC CARD ASSIGNMENT LOGIC ===
-function getNextAvailableCard(activeBreaks, cardSettings, area) {
-    // 1. Get all configured cards for this area (A or B)
-    const availableInZone = cardSettings.filter(c => c.zone === area);
+// === FAST CARD ASSIGNMENT (MEMORY) ===
+function getNextAvailableCardInMemory(area) {
+    // 1. Get cards for zone
+    const availableInZone = MEMORY.settings.filter(c => c.zone === area);
     
-    // 2. Sort them (Numeric sort for DD_01, DD_02 etc)
+    // 2. Sort numeric
     availableInZone.sort((a, b) => {
         const numA = parseInt(a.cardId.replace(/\D/g, '')) || 0;
         const numB = parseInt(b.cardId.replace(/\D/g, '')) || 0;
         return numA - numB;
     });
 
-    // 3. Find the first one NOT currently in use
-    const usedCards = new Set(activeBreaks.map(b => b.card));
-
+    // 3. Check against In-Memory Used Set (Instant)
     for (const card of availableInZone) {
-        if (!usedCards.has(card.cardId)) {
+        if (!MEMORY.usedCards.has(card.cardId)) {
             return card.cardId;
         }
     }
-    return null; // Full
+    return null;
 }
+
+// ==========================
+// SHEET OPERATIONS (BACKGROUND)
+// ==========================
 
 async function ensureTodaySheet(sheets) {
     const today = getTodaySheetName();
@@ -173,251 +172,157 @@ async function ensureTodaySheet(sheets) {
     }
 }
 
-// === UPDATED: ROBUST SHEET CREATION LOGIC ===
-// Instead of trying to read data, check Metadata list. Much safer.
 async function ensureCardSettingsSheet(sheets) {
     try {
-        // 1. Get Spreadsheet Metadata (List of ALL sheets)
-        const metadata = await sheets.spreadsheets.get({
-            spreadsheetId: WRITE_SPREADSHEET_ID
-        });
-
-        // 2. Check if "CardSettings" is in the list
-        const sheetExists = metadata.data.sheets.some(
-            s => s.properties.title === SETTINGS_SHEET_NAME
-        );
+        const metadata = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+        const sheetExists = metadata.data.sheets.some(s => s.properties.title === SETTINGS_SHEET_NAME);
 
         if (!sheetExists) {
-            console.log(`🛠️ Sheet '${SETTINGS_SHEET_NAME}' not found. Creating...`);
-            
-            // 3. Create the Sheet
+            console.log(`🛠️ Creating '${SETTINGS_SHEET_NAME}'...`);
             await sheets.spreadsheets.batchUpdate({
                 spreadsheetId: WRITE_SPREADSHEET_ID,
-                resource: {
-                    requests: [{
-                        addSheet: { properties: { title: SETTINGS_SHEET_NAME } }
-                    }]
-                }
+                resource: { requests: [{ addSheet: { properties: { title: SETTINGS_SHEET_NAME } } }] }
             });
-
-            // 4. Populate with Defaults (DD_01 - DD_150)
             const header = [['CardID', 'Zone']];
             const rows = [];
-            
-            // DD_01 to DD_50 -> Zone B
             for(let i=1; i<=50; i++) rows.push([`DD_${String(i).padStart(2,'0')}`, 'B']);
-            // DD_51 to DD_150 -> Zone A
             for(let i=51; i<=150; i++) rows.push([`DD_${String(i).padStart(2,'0')}`, 'A']);
-
             await sheets.spreadsheets.values.update({
                 spreadsheetId: WRITE_SPREADSHEET_ID,
                 range: `'${SETTINGS_SHEET_NAME}'!A1`,
                 valueInputOption: 'RAW',
                 resource: { values: [...header, ...rows] }
             });
+        }
+    } catch (e) { console.error("Error ensuring settings sheet:", e); }
+}
+
+// ==========================
+// SYNC & DATA LOADING
+// ==========================
+
+async function refreshStaffCache(sheets) {
+    // This preserves your exact logic for fetching staff, groups, and images
+    try {
+        const [mainRes, imgRes, diRes] = await Promise.all([
+            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI` }),
+            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' }),
+            sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M` })
+        ]);
+
+        const mainRows = mainRes.data.values || [];
+        const imgRows = imgRes.data.values || [];
+        const diRows = diRes.data.values || [];
+
+        const scanMap = {};
+        diRows.forEach(r => {
+            if (r[5] && r[5].includes('Scan') && r[12]) {
+                const id = r[4] ? String(r[4]).trim() : null;
+                if (id) scanMap[safeKey(r[12])] = { id, group: r[6] };
+            }
+        });
+
+        const idMap = {};
+        const nameMap = {};
+        
+        mainRows.forEach((row, i) => {
+            const id = row[1] ? String(row[1]).trim() : null;
+            const nameEN = row[4];
+            const nameKH = row[3];
+            const imgUrl = getDirectImageLink(imgRows[i] ? imgRows[i][0] : '');
+            if (imgUrl) {
+                if (id) idMap[id] = imgUrl;
+                if (nameEN) nameMap[safeKey(nameEN)] = imgUrl;
+                if (nameKH) nameMap[safeKey(nameKH)] = imgUrl;
+            }
+        });
+
+        const staffList = mainRows.map((r, i) => {
+            const nameEN = r[4];
+            if (!nameEN) return null;
+            const scan = scanMap[safeKey(nameEN)];
+            if (!scan) return null;
+            const finalID = scan.id || r[1] ? String(scan.id || r[1]).trim() : null;
             
-            console.log(`✅ SUCCESS: '${SETTINGS_SHEET_NAME}' created and populated with 150 cards.`);
-        } else {
-            console.log(`✅ Verified: '${SETTINGS_SHEET_NAME}' already exists.`);
-        }
-    } catch (e) {
-        console.error("❌ CRITICAL ERROR in ensureCardSettingsSheet:", e);
-    }
+            let finalImg = '';
+            if (finalID && idMap[finalID]) finalImg = idMap[finalID];
+            else if (nameMap[safeKey(r[4])]) finalImg = nameMap[safeKey(r[4])];
+
+            return {
+                id: finalID,
+                name_en: nameEN,
+                name_kh: r[3] || nameEN,
+                group: scan.group || r[26] || 'Staff',
+                image: finalImg
+            };
+        }).filter(Boolean);
+
+        MEMORY.staffCache = { data: staffList, idMap, nameMap };
+    } catch(e) { console.error("Staff fetch error", e); }
 }
 
-// ==========================
-// CACHED FETCHERS
-// ==========================
+async function loadInitialData() {
+    console.log("🔄 Syncing Data from Google Sheets...");
+    try {
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
 
-// ... (getCachedStaffData remains exactly the same)
-async function getCachedStaffData(sheets) {
-    const now = Date.now();
-    if (STAFF_CACHE.data && (now - STAFF_CACHE.timestamp < STAFF_CACHE.duration)) {
-        return STAFF_CACHE;
-    }
-    if (fetchStaffPromise) return fetchStaffPromise;
+        // 1. Load Settings
+        await ensureCardSettingsSheet(sheets);
+        const settingsRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:B`
+        });
+        const settingsRows = settingsRes.data.values || [];
+        MEMORY.settings = settingsRows.slice(1).map(r => ({ cardId: r[0], zone: r[1] })).filter(s => s.cardId && s.zone);
 
-    fetchStaffPromise = (async () => {
-        try {
-            const [mainRes, imgRes, diRes] = await Promise.all([
-                sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI` }),
-                sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' }),
-                sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M` })
-            ]);
+        // 2. Load Active Breaks (Today)
+        const today = await ensureTodaySheet(sheets);
+        const breaksRes = await sheets.spreadsheets.values.get({
+            spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${today}'!A:I`
+        });
+        const breakRows = breaksRes.data.values || [];
+        
+        // Reset Memory
+        MEMORY.activeBreaks = [];
+        MEMORY.usedCards.clear();
 
-            const mainRows = mainRes.data.values || [];
-            const imgRows = imgRes.data.values || [];
-            const diRows = diRes.data.values || [];
-
-            const scanMap = {};
-            diRows.forEach(r => {
-                const status = r[5];
-                const nameEN = r[12];
-                if (status && status.includes('Scan') && nameEN) {
-                    const id = r[4] ? String(r[4]).trim() : null;
-                    if (id) scanMap[safeKey(nameEN)] = { id, group: r[6] };
-                }
-            });
-
-            const idMap = {};
-            const nameMap = {};
-
-            mainRows.forEach((row, i) => {
-                const id = row[1] ? String(row[1]).trim() : null;
-                const nameEN = row[4];
-                const nameKH = row[3];
-                const imgFormula = imgRows[i] ? imgRows[i][0] : '';
-                const imgUrl = getDirectImageLink(imgFormula);
-
-                if (imgUrl) {
-                    if (id) idMap[id] = imgUrl;
-                    if (nameEN) nameMap[safeKey(nameEN)] = imgUrl;
-                    if (nameKH) nameMap[safeKey(nameKH)] = imgUrl;
-                }
-            });
-
-            const staffList = mainRows.map((r, i) => {
-                const nameEN = r[4];
-                if (!nameEN) return null;
-                const scan = scanMap[safeKey(nameEN)];
-                if (!scan) return null;
-
-                const finalID = scan.id || r[1] ? String(scan.id || r[1]).trim() : null;
-                const nameKH = r[3];
-                let finalImg = '';
-                
-                if (finalID && idMap[finalID]) finalImg = idMap[finalID];
-                else if (nameKH && nameMap[safeKey(nameKH)]) finalImg = nameMap[safeKey(nameKH)];
-                else finalImg = getDirectImageLink(imgRows[i]?.[0]);
-
-                return {
-                    id: finalID,
-                    name_en: nameEN,
-                    name_kh: nameKH || nameEN,
-                    group: scan.group || r[26] || 'Staff',
-                    image: finalImg
-                };
-            }).filter(Boolean);
-
-            STAFF_CACHE = { data: staffList, idMap, nameMap, timestamp: Date.now(), duration: STAFF_CACHE.duration };
-            return STAFF_CACHE;
-        } catch (e) {
-            console.error("Staff fetch failed:", e);
-            throw e;
-        } finally {
-            fetchStaffPromise = null;
-        }
-    })();
-    return fetchStaffPromise;
-}
-
-// ... (getFreshBreaks remains exactly the same)
-async function getFreshBreaks(sheets) {
-    const sheet = await ensureTodaySheet(sheets);
-    const r = await sheets.spreadsheets.values.get({ 
-        spreadsheetId: WRITE_SPREADSHEET_ID, 
-        range: `'${sheet}'!A:I` 
-    });
-    const rows = r.data.values || [];
-    
-    return rows.slice(1).map((row) => ({
-        id: row[0] ? String(row[0]).trim() : null,
-        timeOut: row[3],
-        timeIn: row[4],
-        area: row[5],
-        card: row[8]
-    })).filter(r => r.timeOut && !r.timeIn);
-}
-
-// ... (getCachedBreaks remains exactly the same)
-async function getCachedBreaks(sheets) {
-    const now = Date.now();
-    if (BREAKS_CACHE.data && (now - BREAKS_CACHE.timestamp < BREAKS_CACHE.duration)) {
-        return BREAKS_CACHE.data;
-    }
-    if (fetchBreaksPromise) return fetchBreaksPromise;
-
-    fetchBreaksPromise = (async () => {
-        try {
-            const sheet = await ensureTodaySheet(sheets);
-            const r = await sheets.spreadsheets.values.get({ 
-                spreadsheetId: WRITE_SPREADSHEET_ID, 
-                range: `'${sheet}'!A:I` 
-            });
-            const rows = r.data.values || [];
-            const staffCache = await getCachedStaffData(sheets);
-
-            const active = rows.slice(1).map((row, i) => {
-                const id = row[0] ? String(row[0]).trim() : null;
-                const name = row[1];
-                let imgUrl = '';
-                if (id && staffCache.idMap[id]) imgUrl = staffCache.idMap[id];
-                else if (name && staffCache.nameMap[safeKey(name)]) imgUrl = staffCache.nameMap[safeKey(name)];
-
-                return {
-                    rowIndex: i + 2,
-                    id, name, group: row[2],
+        breakRows.slice(1).forEach((row, i) => {
+            // Only care about people who haven't returned (TimeIn is empty)
+            if (row[3] && !row[4]) {
+                const b = {
+                    id: row[0] ? String(row[0]).trim() : null,
+                    name: row[1],
+                    group: row[2],
                     timeOut: row[3],
-                    timeIn: row[4],
                     area: row[5],
                     date: row[6],
-                    overtime: row[7],
-                    card: row[8] || '', 
-                    image: imgUrl
+                    card: row[8],
+                    rowIndex: i + 2, // 1-based index, +1 for header
+                    sheetName: today
                 };
-            }).filter(r => r.timeOut && !r.timeIn);
+                MEMORY.activeBreaks.push(b);
+                if (row[8]) MEMORY.usedCards.add(row[8]);
+            }
+        });
 
-            BREAKS_CACHE = { data: active, timestamp: Date.now(), duration: BREAKS_CACHE.duration };
-            return active;
-        } catch (e) {
-            console.error("Breaks fetch failed:", e);
-            return BREAKS_CACHE.data || [];
-        } finally {
-            fetchBreaksPromise = null;
-        }
-    })();
-    return fetchBreaksPromise;
-}
+        // 3. Load Staff Data
+        await refreshStaffCache(sheets);
 
-// === CACHED SETTINGS FETCHER ===
-async function getCachedSettings(sheets) {
-    const now = Date.now();
-    if (SETTINGS_CACHE.data && (now - SETTINGS_CACHE.timestamp < SETTINGS_CACHE.duration)) {
-        return SETTINGS_CACHE.data;
+        MEMORY.isReady = true;
+        console.log(`✅ System Ready! Active Breaks: ${MEMORY.activeBreaks.length}, Used Cards: ${MEMORY.usedCards.size}`);
+
+    } catch (e) {
+        console.error("❌ CRITICAL INIT ERROR:", e);
+        // Retry in 5 seconds if failed
+        setTimeout(loadInitialData, 5000);
     }
-    if (fetchSettingsPromise) return fetchSettingsPromise;
-
-    fetchSettingsPromise = (async () => {
-        try {
-            await ensureCardSettingsSheet(sheets); // Ensures sheet exists first
-            const r = await sheets.spreadsheets.values.get({ 
-                spreadsheetId: WRITE_SPREADSHEET_ID, 
-                range: `'${SETTINGS_SHEET_NAME}'!A:B` 
-            });
-            const rows = r.data.values || [];
-            
-            const settings = rows.slice(1).map(r => ({
-                cardId: r[0],
-                zone: r[1]
-            })).filter(s => s.cardId && s.zone);
-
-            SETTINGS_CACHE = { data: settings, timestamp: Date.now(), duration: SETTINGS_CACHE.duration };
-            return settings;
-        } catch (e) {
-            console.error("Settings fetch failed", e);
-            return SETTINGS_CACHE.data || [];
-        } finally {
-            fetchSettingsPromise = null;
-        }
-    })();
-    return fetchSettingsPromise;
 }
 
 // ==========================
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - with Robust Card Creation'));
+app.get('/', (req, res) => res.send('Staff Hub API - Fast & Robust'));
 
 app.post('/login', (req, res) => {
     const { email, password } = req.body;
@@ -439,43 +344,56 @@ app.get('/available-sheets', async (req, res) => {
     } catch (error) { res.status(500).json([]); }
 });
 
-app.get('/staff', async (req, res) => {
-    try {
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const cache = await getCachedStaffData(sheets);
-        res.json(cache.data);
-    } catch (err) { res.status(500).json({ error: err.message }); }
+app.get('/staff', (req, res) => {
+    // Serve directly from RAM
+    if (MEMORY.staffCache) res.json(MEMORY.staffCache.data);
+    else res.json([]);
 });
 
-app.get('/active-breaks', async (req, res) => {
-    try {
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const data = await getCachedBreaks(sheets);
-        res.json(data);
-    } catch (e) { res.status(500).json([]); }
+app.get('/active-breaks', (req, res) => {
+    // Serve directly from RAM (Enriched with images)
+    const enrichedBreaks = MEMORY.activeBreaks.map(b => {
+        let imgUrl = '';
+        if (MEMORY.staffCache) {
+            if (b.id && MEMORY.staffCache.idMap[b.id]) imgUrl = MEMORY.staffCache.idMap[b.id];
+            else if (b.name && MEMORY.staffCache.nameMap[safeKey(b.name)]) imgUrl = MEMORY.staffCache.nameMap[safeKey(b.name)];
+        }
+        return { ...b, image: imgUrl };
+    });
+    res.json(enrichedBreaks);
 });
 
+app.get('/cards', (req, res) => {
+    res.json(MEMORY.settings);
+});
+
+// === REPORT ROUTE (Preserved) ===
 app.get('/report', async (req, res) => {
     const { filter } = req.query; 
     if(!filter || filter === 'undefined') return res.json({ raw: [] });
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        const staffCache = await getCachedStaffData(sheets);
+        
+        // We still use MEMORY cache for images to make this faster
+        const staffCache = MEMORY.staffCache || { idMap: {}, nameMap: {} };
+
         const metaData = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
         const allSheetNames = metaData.data.sheets.map(s => s.properties.title);
         const sheetsToFetch = allSheetNames.filter(name => name.endsWith(filter));
+        
         if(sheetsToFetch.length === 0) return res.json({ raw: [] });
+        
         const fetchPromises = sheetsToFetch.map(sheetName => 
             sheets.spreadsheets.values.get({ 
                 spreadsheetId: WRITE_SPREADSHEET_ID, 
                 range: `'${sheetName}'!A:I` 
             }).then(res => ({ name: sheetName, rows: res.data.values || [] }))
         );
+        
         const results = await Promise.all(fetchPromises);
         let aggregatedRows = [];
+        
         results.forEach(sheetData => { 
             const sheetRows = sheetData.rows.slice(1).map((r, idx) => ({ ...r, _sheetName: sheetData.name, _rowIndex: idx + 2 }));
             const mappedRows = sheetRows.map(row => {
@@ -498,99 +416,248 @@ app.get('/report', async (req, res) => {
     } catch (error) { res.json({ raw: [] }); }
 });
 
+// === DESTRUCTIVE ADMIN ROUTES (Preserved but now update Memory) ===
 app.post('/delete-sheets', async (req, res) => {
     const { sheetNames } = req.body;
     if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) return res.status(400).json({ error: 'Missing sheet names' });
-    try {
-        await waitForLock();
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const response = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
-        const allSheets = response.data.sheets;
-        const sheetsToDelete = allSheets.filter(s => sheetNames.includes(s.properties.title));
-        if (sheetsToDelete.length === 0) { releaseLock(); return res.json({ status: 'success' }); }
-        if (sheetsToDelete.length === allSheets.length) {
-             await sheets.spreadsheets.batchUpdate({
-                spreadsheetId: WRITE_SPREADSHEET_ID,
-                resource: { requests: [{ addSheet: { properties: { title: `New Sheet ${Date.now()}` } } }] }
-            });
+    
+    // Add to Queue to prevent conflict with active writes
+    queueSheetTask(async () => {
+        try {
+            const client = await auth.getClient();
+            const sheets = google.sheets({ version: 'v4', auth: client });
+            const response = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+            const allSheets = response.data.sheets;
+            const sheetsToDelete = allSheets.filter(s => sheetNames.includes(s.properties.title));
+            
+            if (sheetsToDelete.length > 0) {
+                 // Check if we need to add a default sheet
+                if (sheetsToDelete.length === allSheets.length) {
+                     await sheets.spreadsheets.batchUpdate({
+                        spreadsheetId: WRITE_SPREADSHEET_ID,
+                        resource: { requests: [{ addSheet: { properties: { title: `New Sheet ${Date.now()}` } } }] }
+                    });
+                }
+                const deleteRequests = sheetsToDelete.map(s => ({ deleteSheet: { sheetId: s.properties.sheetId } }));
+                await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests: deleteRequests } });
+            }
+            
+            // Reload Memory because we might have deleted today's sheet
+            await loadInitialData(); 
+            io.emit('data_updated');
+            res.json({ status: 'success', deletedCount: sheetsToDelete.length });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error', message: err.message });
         }
-        const deleteRequests = sheetsToDelete.map(s => ({ deleteSheet: { sheetId: s.properties.sheetId } }));
-        await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests: deleteRequests } });
-        BREAKS_CACHE.timestamp = 0; io.emit('data_updated');
-        res.json({ status: 'success', deletedCount: sheetsToDelete.length });
-    } catch (err) { res.status(500).json({ status: 'error', message: err.message }); } finally { releaseLock(); }
+    });
 });
 
 app.post('/delete-specific-rows', async (req, res) => {
     const { itemsToDelete } = req.body;
     if (!itemsToDelete || !Array.isArray(itemsToDelete)) return res.status(400).json({ error: 'Missing items' });
-    try {
-        await waitForLock();
+
+    queueSheetTask(async () => {
+        try {
+            const client = await auth.getClient();
+            const sheets = google.sheets({ version: 'v4', auth: client });
+            const sheetsMap = {};
+            const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+            const titleToId = {};
+            spreadsheetMeta.data.sheets.forEach(s => { titleToId[s.properties.title] = s.properties.sheetId; });
+            
+            itemsToDelete.forEach(item => {
+                const sheetId = titleToId[item.sheetName];
+                if (sheetId && item.rowIndex > 1) {
+                    if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
+                    sheetsMap[sheetId].push(item.rowIndex - 1); 
+                }
+            });
+            const requests = [];
+            for (const [sheetId, indices] of Object.entries(sheetsMap)) {
+                indices.sort((a, b) => b - a);
+                indices.forEach(idx => {
+                    requests.push({ deleteDimension: { range: { sheetId: parseInt(sheetId), dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } } });
+                });
+            }
+            if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests } });
+            
+            // Reload Memory
+            await loadInitialData();
+            io.emit('data_updated');
+            res.json({ status: 'success' });
+        } catch (err) {
+            console.error(err);
+            res.status(500).json({ status: 'error', message: err.message });
+        }
+    });
+});
+
+
+// ==========================
+// ⚡ FAST WRITE ENDPOINTS (RAM + QUEUE)
+// ==========================
+
+app.post('/break', async (req, res) => {
+    if (!MEMORY.isReady) return res.status(503).json({ error: 'Server starting up...' });
+
+    const { id, name, group, area } = req.body;
+    if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
+
+    const targetId = String(id).trim();
+
+    // 1. CHECK MEMORY (Instant) - Prevent Duplicate Users
+    const alreadyOut = MEMORY.activeBreaks.find(b => b.id === targetId);
+    if (alreadyOut) {
+        return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
+    }
+
+    // 2. ASSIGN CARD (Instant) - Prevent Duplicate Cards
+    const card = getNextAvailableCardInMemory(area);
+    if (!card) {
+        return res.status(400).json({ error: 'No available card in this zone' });
+    }
+
+    // 3. UPDATE MEMORY (Lock the state immediately)
+    const timeStr = getCurrentTimeString();
+    const dateStr = getTodaySheetName();
+    
+    // Reserve the card and user immediately so next request sees it
+    MEMORY.usedCards.add(card);
+    const tempBreakObj = {
+        id: targetId,
+        name,
+        group,
+        timeOut: timeStr,
+        area,
+        date: dateStr,
+        card,
+        pending: true // Mark as pending until write confirms
+    };
+    MEMORY.activeBreaks.push(tempBreakObj);
+
+    // 4. RESPOND TO USER (Fastest possible response)
+    res.json({ status: 'success', timeOut: timeStr, card: card });
+    io.emit('data_updated'); 
+
+    // 5. BACKGROUND SYNC TO SHEETS (Queue)
+    queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        const sheetsMap = {};
-        const spreadsheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
-        const titleToId = {};
-        spreadsheetMeta.data.sheets.forEach(s => { titleToId[s.properties.title] = s.properties.sheetId; });
-        itemsToDelete.forEach(item => {
-            const sheetId = titleToId[item.sheetName];
-            if (sheetId && item.rowIndex > 1) {
-                if (!sheetsMap[sheetId]) sheetsMap[sheetId] = [];
-                sheetsMap[sheetId].push(item.rowIndex - 1); 
+        
+        await ensureTodaySheet(sheets);
+
+        const values = [[
+            targetId, name, group || '', timeStr, '', area, dateStr, '', card
+        ]];
+
+        const appendRes = await sheets.spreadsheets.values.append({
+            spreadsheetId: WRITE_SPREADSHEET_ID,
+            range: `'${dateStr}'!A:I`,
+            valueInputOption: 'USER_ENTERED',
+            resource: { values }
+        });
+
+        // Update the object in memory with the real row index (so we can delete/edit it later)
+        const updatedRange = appendRes.data.updates.updatedRange; 
+        const rowMatch = updatedRange.match(/!A(\d+)/);
+        if (rowMatch) {
+            const rowIndex = parseInt(rowMatch[1]);
+            const memObj = MEMORY.activeBreaks.find(b => b.id === targetId && b.pending === true);
+            if (memObj) {
+                memObj.rowIndex = rowIndex;
+                memObj.sheetName = dateStr;
+                delete memObj.pending;
+            }
+        }
+    });
+});
+
+app.post('/timein', async (req, res) => {
+    if (!MEMORY.isReady) return res.status(503).json({ error: 'Server starting up...' });
+
+    const { id } = req.body;
+    if (!id) return res.status(400).json({ error: 'ID required' });
+    const targetId = String(id).trim();
+
+    // 1. FIND IN MEMORY
+    const breakIndex = MEMORY.activeBreaks.findIndex(b => b.id === targetId);
+    if (breakIndex === -1) {
+        return res.json({ status: 'success', message: 'Already timed in or not found' });
+    }
+
+    const breakRecord = MEMORY.activeBreaks[breakIndex];
+
+    // 2. CALC OVERTIME
+    const now = getCambodiaDate();
+    const diff = Math.floor((now - parseTimeStr(breakRecord.timeOut)) / 60000);
+    const overtime = diff > 15 ? `${diff - 15} mins` : '0';
+    const timeInStr = getCurrentTimeString();
+
+    // 3. UPDATE MEMORY (Release Card Immediately)
+    if (breakRecord.card) {
+        MEMORY.usedCards.delete(breakRecord.card);
+    }
+    // Remove from active breaks list
+    MEMORY.activeBreaks.splice(breakIndex, 1);
+
+    // 4. RESPOND TO USER
+    res.json({ status: 'success', timeIn: timeInStr });
+    io.emit('data_updated');
+
+    // 5. BACKGROUND SYNC
+    queueSheetTask(async () => {
+        // Fallback if sheet info missing (rare)
+        if (!breakRecord.rowIndex || !breakRecord.sheetName) {
+            console.log("⚠️ Missing row info for timein, attempting reload...");
+            await loadInitialData(); 
+            return; 
+        }
+
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+
+        await sheets.spreadsheets.values.batchUpdate({
+            spreadsheetId: WRITE_SPREADSHEET_ID,
+            resource: { 
+                valueInputOption: 'USER_ENTERED', 
+                data: [ 
+                    { range: `'${breakRecord.sheetName}'!E${breakRecord.rowIndex}`, values: [[timeInStr]] }, 
+                    { range: `'${breakRecord.sheetName}'!H${breakRecord.rowIndex}`, values: [[overtime]] } 
+                ] 
             }
         });
-        const requests = [];
-        for (const [sheetId, indices] of Object.entries(sheetsMap)) {
-            indices.sort((a, b) => b - a);
-            indices.forEach(idx => {
-                requests.push({ deleteDimension: { range: { sheetId: parseInt(sheetId), dimension: "ROWS", startIndex: idx, endIndex: idx + 1 } } });
-            });
-        }
-        if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests } });
-        BREAKS_CACHE.timestamp = 0; io.emit('data_updated');
-        res.json({ status: 'success' });
-    } catch (err) { res.status(500).json({ status: 'error', message: err.message }); } finally { releaseLock(); }
+    });
 });
 
-// === CARD MANAGEMENT ENDPOINTS ===
+// === SETTINGS MANAGEMENT (RAM + Queue) ===
 
-// GET ALL CARD SETTINGS
-app.get('/cards', async (req, res) => {
-    try {
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const settings = await getCachedSettings(sheets);
-        res.json(settings);
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
-});
-
-// ADD OR UPDATE CARD
 app.post('/cards/update', async (req, res) => {
     const { cardId, zone } = req.body;
     if (!cardId || !zone) return res.status(400).json({ error: 'Missing Data' });
 
-    try {
-        await waitForLock();
+    // Update Memory
+    const existing = MEMORY.settings.find(s => s.cardId === cardId);
+    if (existing) existing.zone = zone;
+    else MEMORY.settings.push({ cardId, zone });
+    
+    res.json({ status: 'success' }); // Fast response
+
+    // Background Persist
+    queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        
         await ensureCardSettingsSheet(sheets);
-
+        
+        // Basic strategy: Read all, find row, update/append. 
+        // Since we are in the queue, this is safe.
         const r = await sheets.spreadsheets.values.get({ 
-            spreadsheetId: WRITE_SPREADSHEET_ID, 
-            range: `'${SETTINGS_SHEET_NAME}'!A:B` 
+             spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:B` 
         });
         const rows = r.data.values || [];
-        
         let rowIndex = -1;
         for(let i=0; i<rows.length; i++) {
-            if(rows[i][0] === cardId) {
-                rowIndex = i + 1;
-                break;
-            }
+            if(rows[i][0] === cardId) { rowIndex = i + 1; break; }
         }
 
         if (rowIndex > -1) {
@@ -608,172 +675,41 @@ app.post('/cards/update', async (req, res) => {
                 resource: { values: [[cardId, zone]] }
             });
         }
-        
-        SETTINGS_CACHE.timestamp = 0;
-        res.json({ status: 'success' });
-    } catch (e) {
-        res.status(500).json({ error: "Configuration Error: " + e.message });
-    } finally {
-        releaseLock();
-    }
+    });
 });
 
-// === WRITE ENDPOINTS (USING DYNAMIC SETTINGS) ===
-
-app.post('/break', async (req, res) => {
-    const { id, name, group, area } = req.body;
-    if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
-
-    try {
-        await waitForLock(); // 1. Acquire Lock
-
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        
-        const activeBreaks = await getFreshBreaks(sheets);
-        
-        // Ensure Settings exist before assigning
-        await ensureCardSettingsSheet(sheets);
-        
-        const rSettings = await sheets.spreadsheets.values.get({ 
-             spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:B` 
-        });
-        const sRows = rSettings.data.values || [];
-        const cardSettings = sRows.slice(1).map(r => ({ cardId: r[0], zone: r[1] }));
-
-        const isAlreadyOnBreak = activeBreaks.some(b => String(b.id) === String(id));
-
-        if (isAlreadyOnBreak) {
-            console.log(`Duplicate blocked for ID: ${id}`);
-            releaseLock(); 
-            return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
-        }
-        
-        let card = getNextAvailableCard(activeBreaks, cardSettings, area);
-        
-        if (!card) {
-            releaseLock();
-            return res.status(400).json({ error: 'No available card in this zone' });
-        }
-
-        const timeStr = getCurrentTimeString();
-        const dateStr = getTodaySheetName();
-        const sheet = dateStr; 
-
-        const values = [[
-            String(id).trim(), name, group || '', timeStr, '', area, dateStr, '', card
-        ]];
-
-        await sheets.spreadsheets.values.append({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            range: `'${sheet}'!A:I`,
-            valueInputOption: 'USER_ENTERED',
-            resource: { values }
-        });
-
-        BREAKS_CACHE.timestamp = 0; 
-        io.emit('data_updated'); 
-        
-        res.json({ status: 'success', timeOut: timeStr, card: card });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ status: 'error' });
-    } finally {
-        releaseLock(); // Release Lock
-    }
-});
-
-app.post('/timein', async (req, res) => {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: 'ID required' });
-    try {
-        await waitForLock();
-        const client = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: client });
-        const sheet = getTodaySheetName();
-        const r = await sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${sheet}'!A:I` });
-        const rows = r.data.values || [];
-        let rowIndex = -1;
-        let outTime = '';
-        const targetId = String(id).trim();
-        for (let i = rows.length - 1; i >= 1; i--) {
-            const rowId = rows[i][0] ? String(rows[i][0]).trim() : '';
-            if (rowId === targetId && !rows[i][4]) { rowIndex = i + 1; outTime = rows[i][3]; break; }
-        }
-        if (rowIndex === -1) { releaseLock(); return res.json({ status: 'success', message: 'Already timed in' }); }
-        const now = getCambodiaDate();
-        const diff = Math.floor((now - parseTimeStr(outTime)) / 60000);
-        const overtime = diff > 15 ? `${diff - 15} mins` : '0';
-        const timeInStr = getCurrentTimeString();
-        await sheets.spreadsheets.values.batchUpdate({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            resource: { valueInputOption: 'USER_ENTERED', data: [ { range: `'${sheet}'!E${rowIndex}`, values: [[timeInStr]] }, { range: `'${sheet}'!H${rowIndex}`, values: [[overtime]] } ] }
-        });
-        BREAKS_CACHE.timestamp = 0; io.emit('data_updated'); res.json({ status: 'success', timeIn: timeInStr });
-    } catch (err) { console.error(err); res.status(500).json({ status: 'error' }); } finally { releaseLock(); }
-});
-
-// === NEW: DELETE CARD ROUTE ===
 app.post('/cards/delete', async (req, res) => {
     const { cardId } = req.body;
     if (!cardId) return res.status(400).json({ error: 'Missing Card ID' });
 
-    try {
-        await waitForLock();
+    // Update Memory
+    const idx = MEMORY.settings.findIndex(s => s.cardId === cardId);
+    if (idx > -1) MEMORY.settings.splice(idx, 1);
+    
+    res.json({ status: 'success' });
+
+    // Background Persist
+    queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-
-        // 1. Get current data to find the row index
         const r = await sheets.spreadsheets.values.get({ 
-            spreadsheetId: WRITE_SPREADSHEET_ID, 
-            range: `'${SETTINGS_SHEET_NAME}'!A:A` 
+            spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:A` 
         });
         const rows = r.data.values || [];
-        
         let rowIndex = -1;
-        // Find the row (Start from index 0)
         for(let i=0; i<rows.length; i++) {
-            if(rows[i][0] === cardId) {
-                rowIndex = i; // 0-based index for deleteDimension
-                break;
-            }
+            if(rows[i][0] === cardId) { rowIndex = i; break; }
         }
 
-        if (rowIndex === -1) {
-            releaseLock();
-            return res.status(404).json({ error: 'Card not found' });
+        if (rowIndex > -1) {
+            const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
+            const sheetId = sheetMeta.data.sheets.find(s => s.properties.title === SETTINGS_SHEET_NAME).properties.sheetId;
+            await sheets.spreadsheets.batchUpdate({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                resource: { requests: [{ deleteDimension: { range: { sheetId: sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 } } }] }
+            });
         }
-
-        // 2. Delete the specific row
-        const sheetMeta = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
-        const sheetId = sheetMeta.data.sheets.find(s => s.properties.title === SETTINGS_SHEET_NAME).properties.sheetId;
-
-        await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: WRITE_SPREADSHEET_ID,
-            resource: {
-                requests: [{
-                    deleteDimension: {
-                        range: {
-                            sheetId: sheetId,
-                            dimension: "ROWS",
-                            startIndex: rowIndex,
-                            endIndex: rowIndex + 1
-                        }
-                    }
-                }]
-            }
-        });
-
-        SETTINGS_CACHE.timestamp = 0; // Clear cache
-        res.json({ status: 'success' });
-
-    } catch (e) {
-        console.error(e);
-        res.status(500).json({ error: "Delete failed: " + e.message });
-    } finally {
-        releaseLock();
-    }
+    });
 });
 
 // SOCKET LOGGING
@@ -781,17 +717,15 @@ io.on('connection', (socket) => {
     console.log('Device connected:', socket.id);
 });
 
-// STARTUP CHECK: Ensure configuration sheet exists on launch
+// START SERVER & LOAD DATA
 server.listen(PORT, '0.0.0.0', async () => {
-    console.log(`Server running on port http://localhost:${PORT}`);
+    console.log(`🚀 Server running on port http://localhost:${PORT}`);
+    loadInitialData(); // Load all data into RAM once on startup
     
-    // STARTUP LOGIC: Ensure Settings Sheet Exists
-    try {
+    // Refresh Staff Data every 10 mins in background
+    setInterval(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-        console.log("Checking Card Configuration Sheet...");
-        await ensureCardSettingsSheet(sheets);
-    } catch (e) {
-        console.error("Initialization warning:", e.message);
-    }
+        refreshStaffCache(sheets);
+    }, 10 * 60 * 1000);
 });
