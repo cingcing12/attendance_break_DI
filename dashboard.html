@@ -1136,48 +1136,68 @@
                 confirmButtonText: 'Yes, Delete',
                 customClass: { popup: 'border border-white/10 rounded-2xl' }
             }).then((result) => {
-                if (result.isConfirmed) performBatchDelete();
+                if (result.isConfirmed) window.performBatchDelete();
             });
         }
 
-        async function performBatchDelete() {
-            showLoading("Deleting...");
-            closeManageModal();
-            const sheetsToDelete = Array.from(selectedSheets);
 
-            try {
-                const res = await fetch(`${API_URL}/delete-sheets`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ sheetNames: sheetsToDelete })
-                });
-                
-                const data = await res.json();
-                if (data.status === 'success') {
-                    const resSheets = await fetch(`${API_URL}/available-sheets`);
-                    if(resSheets.ok) availableSheets = await resSheets.json();
-                    
-                    populateFilter('daily'); 
-                    manualFetch();
-                    
-                    Swal.fire({ 
-                        icon: 'success', 
-                        title: 'Deleted Successfully!', 
-                        background: '#121212', 
-                        color: '#fff', 
-                        timer: 1500, 
-                        showConfirmButton: false,
-                        customClass: { popup: 'border border-white/10 rounded-2xl' }
-                    });
-                } else {
-                    throw new Error(data.message);
-                }
-            } catch (e) {
-                Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: '#121212', color:'#fff' });
-            } finally {
-                hideLoading();
-            }
+
+        window.performBatchDelete = async () => {
+    console.log("performBatchDelete called");
+
+    showLoading("Deleting...");
+
+    const sheetsToDelete = Array.from(selectedSheets);
+    console.log("Deleting Sheets:", sheetsToDelete);
+
+    closeManageModal(); // AFTER collecting data
+
+    if (!sheetsToDelete.length) {
+        hideLoading();
+        return;
+    }
+
+    try {
+        const res = await fetch(`${API_URL}/delete-sheets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sheetNames: sheetsToDelete })
+        });
+
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            const resSheets = await fetch(`${API_URL}/available-sheets`);
+            if (resSheets.ok) availableSheets = await resSheets.json();
+
+            populateFilter('daily');
+            manualFetch();
+
+            Swal.fire({
+                icon: 'success',
+                title: 'Deleted Successfully!',
+                background: '#121212',
+                color: '#fff',
+                timer: 1500,
+                showConfirmButton: false,
+                customClass: { popup: 'border border-white/10 rounded-2xl' }
+            });
+        } else {
+            throw new Error(data.message || "Delete failed");
         }
+    } catch (e) {
+        Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: e.message,
+            background: '#121212',
+            color: '#fff'
+        });
+    } finally {
+        hideLoading();
+    }
+}
+
 
         // --- PDF LOGIC ---
         function openPrintModal() { document.getElementById('print-modal').classList.remove('hidden'); setPrintMode('daily'); setZoneMode('all'); }
