@@ -712,6 +712,13 @@ app.post('/cards/delete', async (req, res) => {
     });
 });
 
+app.get('/health', (req, res) => {
+  res.status(200).json({
+    status: 'alive',
+    time: new Date().toISOString()
+  });
+});
+
 // SOCKET LOGGING
 io.on('connection', (socket) => {
     console.log('Device connected:', socket.id);
