@@ -47,20 +47,17 @@ const auth = new google.auth.GoogleAuth({
 // ==========================
 // 🚀 HIGH PERFORMANCE MEMORY STORE
 // ==========================
-// We store today's state in RAM for instant access.
 const MEMORY = {
-    activeBreaks: [], // Array of objects { id, name, card, startTime... }
-    usedCards: new Set(), // Set of Strings "DD_01" for O(1) lookup
-    settings: [],     // Array of { cardId, zone }
-    staffCache: null, // Full staff data
-    isReady: false    // Prevents requests before initial load
+    activeBreaks: [], 
+    usedCards: new Set(), 
+    settings: [],     
+    staffCache: null, 
+    isReady: false    
 };
 
 // ==========================
 // ⚡ SEQUENTIAL WRITE QUEUE
 // ==========================
-// Replaces the old "Lock" system. This ensures Google Sheets writes happen 
-// one by one in the background, while the user gets an instant response.
 let sheetWriteQueue = Promise.resolve();
 
 function queueSheetTask(task) {
@@ -101,18 +98,22 @@ function parseTimeStr(timeStr) {
     return d;
 }
 
+// 🛡️ FIXED FUNCTION: Converts input to String to prevent crashes
 function getDirectImageLink(url) {
     if (!url) return '';
-    if (url.startsWith('=IMAGE')) {
-        const m = url.match(/"([^"]+)"/);
-        if (m) url = m[1];
+    const str = String(url).trim(); // Force string
+
+    if (str.startsWith('=IMAGE')) {
+        const m = str.match(/"([^"]+)"/);
+        if (m) return m[1];
     }
-    if (url.match(/\.(jpg|jpeg|png|gif)$/i)) return url;
-    const id = url.match(/[-\w]{25,}/);
-    if (id && url.includes('drive.google.com')) {
+    if (str.match(/\.(jpg|jpeg|png|gif)$/i)) return str;
+    
+    const id = str.match(/[-\w]{25,}/);
+    if (id && str.includes('drive.google.com')) {
         return `https://drive.google.com/thumbnail?id=${id[0]}&sz=w500`;
     }
-    return url;
+    return str;
 }
 
 function safeKey(str) {
@@ -121,17 +122,14 @@ function safeKey(str) {
 
 // === FAST CARD ASSIGNMENT (MEMORY) ===
 function getNextAvailableCardInMemory(area) {
-    // 1. Get cards for zone
     const availableInZone = MEMORY.settings.filter(c => c.zone === area);
     
-    // 2. Sort numeric
     availableInZone.sort((a, b) => {
         const numA = parseInt(a.cardId.replace(/\D/g, '')) || 0;
         const numB = parseInt(b.cardId.replace(/\D/g, '')) || 0;
         return numA - numB;
     });
 
-    // 3. Check against In-Memory Used Set (Instant)
     for (const card of availableInZone) {
         if (!MEMORY.usedCards.has(card.cardId)) {
             return card.cardId;
@@ -198,67 +196,81 @@ async function ensureCardSettingsSheet(sheets) {
 }
 
 // ==========================
-// SYNC & DATA LOADING
+// 🔄 SYNC & DATA LOADING (DB_DUC_BKU ONLY)
 // ==========================
 
 async function refreshStaffCache(sheets) {
-    // This preserves your exact logic for fetching staff, groups, and images
     try {
-        const [mainRes, imgRes, diRes] = await Promise.all([
-            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AI` }),
-            sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' }),
-            sheets.spreadsheets.values.get({ spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${DI_SHEET_NAME}'!A9:M` })
-        ]);
+        // 1. Fetch Text Data (A13 to AK)
+        const mainRes = await sheets.spreadsheets.values.get({ 
+            spreadsheetId: READ_SPREADSHEET_ID, 
+            range: `'${READ_SHEET_NAME}'!A13:AK` 
+        });
 
-        const mainRows = mainRes.data.values || [];
+        // 2. Fetch Image Formulas (Column AJ - Index 35)
+        const imgRes = await sheets.spreadsheets.values.get({ 
+            spreadsheetId: READ_SPREADSHEET_ID, 
+            range: `'${READ_SHEET_NAME}'!AJ13:AJ`, 
+            valueRenderOption: 'FORMULA' 
+        });
+
+        const rows = mainRes.data.values || [];
         const imgRows = imgRes.data.values || [];
-        const diRows = diRes.data.values || [];
 
-        const scanMap = {};
-        diRows.forEach(r => {
-            if (r[5] && r[5].includes('Scan') && r[12]) {
-                const id = r[4] ? String(r[4]).trim() : null;
-                if (id) scanMap[safeKey(r[12])] = { id, group: r[6] };
-            }
-        });
-
-        const idMap = {};
-        const nameMap = {};
-        
-        mainRows.forEach((row, i) => {
-            const id = row[1] ? String(row[1]).trim() : null;
-            const nameEN = row[4];
-            const nameKH = row[3];
-            const imgUrl = getDirectImageLink(imgRows[i] ? imgRows[i][0] : '');
-            if (imgUrl) {
-                if (id) idMap[id] = imgUrl;
-                if (nameEN) nameMap[safeKey(nameEN)] = imgUrl;
-                if (nameKH) nameMap[safeKey(nameKH)] = imgUrl;
-            }
-        });
-
-        const staffList = mainRows.map((r, i) => {
-            const nameEN = r[4];
-            if (!nameEN) return null;
-            const scan = scanMap[safeKey(nameEN)];
-            if (!scan) return null;
-            const finalID = scan.id || r[1] ? String(scan.id || r[1]).trim() : null;
+        // 3. Map Data
+        const staffList = rows.map((r, i) => {
+            // === FILTER: ONLY ALLOW "Scan" ===
+            // Column Y (Index 24) is "កន្លែងហាត់ការ"
+            const internshipStatus = r[24] ? String(r[24]).trim() : '';
             
-            let finalImg = '';
-            if (finalID && idMap[finalID]) finalImg = idMap[finalID];
-            else if (nameMap[safeKey(r[4])]) finalImg = nameMap[safeKey(r[4])];
+            // 🛑 STRICT FILTER: If not "Scan", skip this person
+            if (internshipStatus !== 'Scan') return null;
+
+            // Priority: Column AK (Index 36) -> ID_DI
+            // Fallback: Column B (Index 1) -> Student ID
+            let finalID = r[36] ? String(r[36]).trim() : null; 
+            if (!finalID) finalID = r[1] ? String(r[1]).trim() : null;
+
+            const nameEN = r[4]; // Col E (Index 4)
+            const nameKH = r[3]; // Col D (Index 3)
+
+            if (!finalID && !nameEN) return null;
+
+            // Column AA (Index 26) -> Group_DI
+            const group = r[26] ? String(r[26]).trim() : 'Staff'; 
+
+            // Column AJ (Index 35) -> Image
+            let rawImg = imgRows[i] ? imgRows[i][0] : '';
+            if (!rawImg) rawImg = r[35]; 
+            
+            // Pass to fixed function
+            const image = getDirectImageLink(rawImg);
 
             return {
                 id: finalID,
                 name_en: nameEN,
-                name_kh: r[3] || nameEN,
-                group: scan.group || r[26] || 'Staff',
-                image: finalImg
+                name_kh: nameKH || nameEN,
+                group: group,
+                image: image
             };
-        }).filter(Boolean);
+        }).filter(item => item !== null && item.id !== null);
+
+        // 4. Build Cache Maps
+        const idMap = {};
+        const nameMap = {};
+        
+        staffList.forEach(s => {
+            if (s.id) idMap[s.id] = s.image;
+            if (s.name_en) nameMap[safeKey(s.name_en)] = s.image;
+            if (s.name_kh) nameMap[safeKey(s.name_kh)] = s.image;
+        });
 
         MEMORY.staffCache = { data: staffList, idMap, nameMap };
-    } catch(e) { console.error("Staff fetch error", e); }
+        console.log(`✅ Staff Cache Updated: Loaded ${staffList.length} staff (Filtered: Scan Only)`);
+
+    } catch (e) {
+        console.error("❌ Staff fetch error:", e);
+    }
 }
 
 async function loadInitialData() {
@@ -287,7 +299,6 @@ async function loadInitialData() {
         MEMORY.usedCards.clear();
 
         breakRows.slice(1).forEach((row, i) => {
-            // Only care about people who haven't returned (TimeIn is empty)
             if (row[3] && !row[4]) {
                 const b = {
                     id: row[0] ? String(row[0]).trim() : null,
@@ -297,7 +308,7 @@ async function loadInitialData() {
                     area: row[5],
                     date: row[6],
                     card: row[8],
-                    rowIndex: i + 2, // 1-based index, +1 for header
+                    rowIndex: i + 2, 
                     sheetName: today
                 };
                 MEMORY.activeBreaks.push(b);
@@ -313,7 +324,6 @@ async function loadInitialData() {
 
     } catch (e) {
         console.error("❌ CRITICAL INIT ERROR:", e);
-        // Retry in 5 seconds if failed
         setTimeout(loadInitialData, 5000);
     }
 }
@@ -345,13 +355,11 @@ app.get('/available-sheets', async (req, res) => {
 });
 
 app.get('/staff', (req, res) => {
-    // Serve directly from RAM
     if (MEMORY.staffCache) res.json(MEMORY.staffCache.data);
     else res.json([]);
 });
 
 app.get('/active-breaks', (req, res) => {
-    // Serve directly from RAM (Enriched with images)
     const enrichedBreaks = MEMORY.activeBreaks.map(b => {
         let imgUrl = '';
         if (MEMORY.staffCache) {
@@ -367,7 +375,7 @@ app.get('/cards', (req, res) => {
     res.json(MEMORY.settings);
 });
 
-// === REPORT ROUTE (Preserved) ===
+// === REPORT ROUTE ===
 app.get('/report', async (req, res) => {
     const { filter } = req.query; 
     if(!filter || filter === 'undefined') return res.json({ raw: [] });
@@ -375,7 +383,6 @@ app.get('/report', async (req, res) => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         
-        // We still use MEMORY cache for images to make this faster
         const staffCache = MEMORY.staffCache || { idMap: {}, nameMap: {} };
 
         const metaData = await sheets.spreadsheets.get({ spreadsheetId: WRITE_SPREADSHEET_ID });
@@ -416,12 +423,11 @@ app.get('/report', async (req, res) => {
     } catch (error) { res.json({ raw: [] }); }
 });
 
-// === DESTRUCTIVE ADMIN ROUTES (Preserved but now update Memory) ===
+// === DESTRUCTIVE ADMIN ROUTES ===
 app.post('/delete-sheets', async (req, res) => {
     const { sheetNames } = req.body;
     if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) return res.status(400).json({ error: 'Missing sheet names' });
     
-    // Add to Queue to prevent conflict with active writes
     queueSheetTask(async () => {
         try {
             const client = await auth.getClient();
@@ -431,7 +437,6 @@ app.post('/delete-sheets', async (req, res) => {
             const sheetsToDelete = allSheets.filter(s => sheetNames.includes(s.properties.title));
             
             if (sheetsToDelete.length > 0) {
-                 // Check if we need to add a default sheet
                 if (sheetsToDelete.length === allSheets.length) {
                      await sheets.spreadsheets.batchUpdate({
                         spreadsheetId: WRITE_SPREADSHEET_ID,
@@ -442,12 +447,10 @@ app.post('/delete-sheets', async (req, res) => {
                 await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests: deleteRequests } });
             }
             
-            // Reload Memory because we might have deleted today's sheet
             await loadInitialData(); 
             io.emit('data_updated');
             res.json({ status: 'success', deletedCount: sheetsToDelete.length });
         } catch (err) {
-            console.error(err);
             res.status(500).json({ status: 'error', message: err.message });
         }
     });
@@ -482,12 +485,10 @@ app.post('/delete-specific-rows', async (req, res) => {
             }
             if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests } });
             
-            // Reload Memory
             await loadInitialData();
             io.emit('data_updated');
             res.json({ status: 'success' });
         } catch (err) {
-            console.error(err);
             res.status(500).json({ status: 'error', message: err.message });
         }
     });
@@ -506,23 +507,19 @@ app.post('/break', async (req, res) => {
 
     const targetId = String(id).trim();
 
-    // 1. CHECK MEMORY (Instant) - Prevent Duplicate Users
     const alreadyOut = MEMORY.activeBreaks.find(b => b.id === targetId);
     if (alreadyOut) {
         return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
     }
 
-    // 2. ASSIGN CARD (Instant) - Prevent Duplicate Cards
     const card = getNextAvailableCardInMemory(area);
     if (!card) {
         return res.status(400).json({ error: 'No available card in this zone' });
     }
 
-    // 3. UPDATE MEMORY (Lock the state immediately)
     const timeStr = getCurrentTimeString();
     const dateStr = getTodaySheetName();
     
-    // Reserve the card and user immediately so next request sees it
     MEMORY.usedCards.add(card);
     const tempBreakObj = {
         id: targetId,
@@ -532,15 +529,13 @@ app.post('/break', async (req, res) => {
         area,
         date: dateStr,
         card,
-        pending: true // Mark as pending until write confirms
+        pending: true 
     };
     MEMORY.activeBreaks.push(tempBreakObj);
 
-    // 4. RESPOND TO USER (Fastest possible response)
     res.json({ status: 'success', timeOut: timeStr, card: card });
     io.emit('data_updated'); 
 
-    // 5. BACKGROUND SYNC TO SHEETS (Queue)
     queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
@@ -558,7 +553,6 @@ app.post('/break', async (req, res) => {
             resource: { values }
         });
 
-        // Update the object in memory with the real row index (so we can delete/edit it later)
         const updatedRange = appendRes.data.updates.updatedRange; 
         const rowMatch = updatedRange.match(/!A(\d+)/);
         if (rowMatch) {
@@ -580,7 +574,6 @@ app.post('/timein', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'ID required' });
     const targetId = String(id).trim();
 
-    // 1. FIND IN MEMORY
     const breakIndex = MEMORY.activeBreaks.findIndex(b => b.id === targetId);
     if (breakIndex === -1) {
         return res.json({ status: 'success', message: 'Already timed in or not found' });
@@ -588,26 +581,20 @@ app.post('/timein', async (req, res) => {
 
     const breakRecord = MEMORY.activeBreaks[breakIndex];
 
-    // 2. CALC OVERTIME
     const now = getCambodiaDate();
     const diff = Math.floor((now - parseTimeStr(breakRecord.timeOut)) / 60000);
     const overtime = diff > 15 ? `${diff - 15} mins` : '0';
     const timeInStr = getCurrentTimeString();
 
-    // 3. UPDATE MEMORY (Release Card Immediately)
     if (breakRecord.card) {
         MEMORY.usedCards.delete(breakRecord.card);
     }
-    // Remove from active breaks list
     MEMORY.activeBreaks.splice(breakIndex, 1);
 
-    // 4. RESPOND TO USER
     res.json({ status: 'success', timeIn: timeInStr });
     io.emit('data_updated');
 
-    // 5. BACKGROUND SYNC
     queueSheetTask(async () => {
-        // Fallback if sheet info missing (rare)
         if (!breakRecord.rowIndex || !breakRecord.sheetName) {
             console.log("⚠️ Missing row info for timein, attempting reload...");
             await loadInitialData(); 
@@ -636,21 +623,17 @@ app.post('/cards/update', async (req, res) => {
     const { cardId, zone } = req.body;
     if (!cardId || !zone) return res.status(400).json({ error: 'Missing Data' });
 
-    // Update Memory
     const existing = MEMORY.settings.find(s => s.cardId === cardId);
     if (existing) existing.zone = zone;
     else MEMORY.settings.push({ cardId, zone });
     
-    res.json({ status: 'success' }); // Fast response
+    res.json({ status: 'success' });
 
-    // Background Persist
     queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
         await ensureCardSettingsSheet(sheets);
         
-        // Basic strategy: Read all, find row, update/append. 
-        // Since we are in the queue, this is safe.
         const r = await sheets.spreadsheets.values.get({ 
              spreadsheetId: WRITE_SPREADSHEET_ID, range: `'${SETTINGS_SHEET_NAME}'!A:B` 
         });
@@ -682,13 +665,11 @@ app.post('/cards/delete', async (req, res) => {
     const { cardId } = req.body;
     if (!cardId) return res.status(400).json({ error: 'Missing Card ID' });
 
-    // Update Memory
     const idx = MEMORY.settings.findIndex(s => s.cardId === cardId);
     if (idx > -1) MEMORY.settings.splice(idx, 1);
     
     res.json({ status: 'success' });
 
-    // Background Persist
     queueSheetTask(async () => {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
