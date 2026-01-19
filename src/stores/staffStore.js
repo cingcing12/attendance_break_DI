@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { io } from 'socket.io-client'
 
 export const useStaffStore = defineStore('staff', () => {
+    // ⚠️ USE PRODUCTION URL (So all devices connect to the same server)
     const API_URL = "https://attendance-break-di-vsc6.onrender.com";
     
     // --- STATE ---
@@ -24,10 +25,18 @@ export const useStaffStore = defineStore('staff', () => {
 
     const setupSocket = () => {
         if(socket.value) return; // Prevent double connection
-        socket.value = io(API_URL);
-        socket.value.on('data_updated', () => {
-            console.log("Socket Sync Triggered");
-            fetchData();
+        
+        // ⚡ Add transports for better connection stability
+        socket.value = io(API_URL, { transports: ['websocket', 'polling'] });
+        
+        socket.value.on("connect", () => {
+            console.log("🟢 Pinia Store Connected to Socket");
+        });
+
+        // ⚡ FIX: Event name must match Backend ('database_updated')
+        socket.value.on('database_updated', (payload) => {
+            console.log("🔥 Store received update:", payload);
+            fetchData(); // Refresh data instantly when ANY device acts
         });
     };
 
@@ -50,8 +59,10 @@ export const useStaffStore = defineStore('staff', () => {
         });
         const data = await res.json();
         if(data.status === 'success') {
-            await fetchData(); // Refresh data immediately
-            return data.card;  // Return card number for the UI to show
+            // No need to await fetchData here if Socket is working, 
+            // but keeping it makes the UI feel snappier for the user who clicked.
+            await fetchData(); 
+            return data.card;  
         }
         throw new Error('Failed to start break');
     };
