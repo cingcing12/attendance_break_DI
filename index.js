@@ -699,6 +699,55 @@ app.post('/cards/delete', async (req, res) => {
     });
 });
 
+app.get('/stats/today', async (req, res) => {
+    try {
+        const todayStr = getTodaySheetName();
+        const client = await auth.getClient();
+        const sheets = google.sheets({ version: 'v4', auth: client });
+
+        let rows = [];
+        try {
+            // Fetch columns A (ID) through H (Overtime)
+            const response = await sheets.spreadsheets.values.get({
+                spreadsheetId: WRITE_SPREADSHEET_ID,
+                range: `'${todayStr}'!A:H`
+            });
+            rows = response.data.values || [];
+        } catch (e) {
+            // Sheet doesn't exist yet (early morning)
+            return res.json({ staff_today: 0, total_records: 0, total_ot: 0 });
+        }
+
+        // Remove header row
+        const dataRows = rows.slice(1);
+
+        // 1. Total Records (How many times the break button was used)
+        const totalRecords = dataRows.length;
+
+        // 2. Staff Break Today (Unique people count)
+        // We look at Column A (Index 0) which is the ID
+        const uniqueIds = new Set(dataRows.map(r => r[0]).filter(id => id));
+        const staffToday = uniqueIds.size;
+
+        // 3. Count Overtime
+        // Column H (Index 7) is Overtime.
+        const totalOT = dataRows.filter(row => {
+            const ot = row[7];
+            return ot && String(ot).trim() !== '0' && String(ot).trim() !== '';
+        }).length;
+
+        res.json({
+            staff_today: staffToday,  // Unique people
+            total_records: totalRecords, // Total transactions
+            total_ot: totalOT
+        });
+
+    } catch (error) {
+        console.error("❌ Stats Error:", error);
+        res.json({ staff_today: 0, total_records: 0, total_ot: 0 });
+    }
+});
+
 app.get('/health', (req, res) => {
   res.status(200).json({
     status: 'alive',
