@@ -9,15 +9,21 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "start": "node index.js",
     "preview": "vite preview",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d dist"
   },
   "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "googleapis": "^170.1.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.0.0",
     "lucide-vue-next": "^0.562.0",
     "pinia": "^3.0.4",
+    "socket.io": "^4.8.3",
     "socket.io-client": "^4.8.3",
     "sweetalert2": "^11.26.17",
     "vue": "^3.5.26",
