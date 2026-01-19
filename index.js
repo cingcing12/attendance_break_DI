@@ -448,7 +448,8 @@ app.post('/delete-sheets', async (req, res) => {
             }
             
             await loadInitialData(); 
-            io.emit('data_updated');
+            // FIX 1: Correct event name
+            io.emit('database_updated', { type: 'delete_sheets' });
             res.json({ status: 'success', deletedCount: sheetsToDelete.length });
         } catch (err) {
             res.status(500).json({ status: 'error', message: err.message });
@@ -486,7 +487,8 @@ app.post('/delete-specific-rows', async (req, res) => {
             if (requests.length > 0) await sheets.spreadsheets.batchUpdate({ spreadsheetId: WRITE_SPREADSHEET_ID, resource: { requests } });
             
             await loadInitialData();
-            io.emit('data_updated');
+            // FIX 2: Correct event name
+            io.emit('database_updated', { type: 'delete_rows' });
             res.json({ status: 'success' });
         } catch (err) {
             res.status(500).json({ status: 'error', message: err.message });
@@ -534,7 +536,9 @@ app.post('/break', async (req, res) => {
     MEMORY.activeBreaks.push(tempBreakObj);
 
     res.json({ status: 'success', timeOut: timeStr, card: card });
-    io.emit('data_updated'); 
+    
+    // FIX 3: Correct event name
+    io.emit('database_updated', { type: 'break', id: targetId }); 
 
     queueSheetTask(async () => {
         const client = await auth.getClient();
@@ -592,7 +596,9 @@ app.post('/timein', async (req, res) => {
     MEMORY.activeBreaks.splice(breakIndex, 1);
 
     res.json({ status: 'success', timeIn: timeInStr });
-    io.emit('data_updated');
+
+    // FIX 4: Correct event name
+    io.emit('database_updated', { type: 'timein', id: targetId });
 
     queueSheetTask(async () => {
         if (!breakRecord.rowIndex || !breakRecord.sheetName) {
@@ -699,118 +705,6 @@ app.get('/health', (req, res) => {
     time: new Date().toISOString()
   });
 });
-
-// ==========================================
-// 🛠️ FUNCTION: SYNC DI DATA (Sheet3 -> DB_DUC_BKU)
-// ==========================================
-async function syncDIDataToMainDB() {
-    console.log("🔄 [Sync] Starting DI Data Synchronization...");
-
-    // Helper: Remove spaces and lowercase for accurate matching
-    const cleanName = (name) => name ? String(name).replace(/\s+/g, '').trim().toLowerCase() : '';
-
-    // We use the queue to ensure this doesn't conflict with other writes
-    queueSheetTask(async () => {
-        try {
-            const client = await auth.getClient();
-            const sheets = google.sheets({ version: 'v4', auth: client });
-
-            // 1. FETCH SOURCE: Sheet3 (Starts at Row 9)
-            // We need: Col E (ID-DI), Col G (Group-DI), Col L (Name KH)
-            // Fetching range A9:M to get all these columns
-            const sourceRes = await sheets.spreadsheets.values.get({
-                spreadsheetId: WRITE_SPREADSHEET_ID, // Sheet3 is in the 'Write' file
-                range: `'${DI_SHEET_NAME}'!A9:M` 
-            });
-
-            const sourceRows = sourceRes.data.values || [];
-            if (sourceRows.length === 0) {
-                console.log("⚠️ [Sync] Source sheet (Sheet3) is empty.");
-                return;
-            }
-
-            // Create Lookup Map: CleanName -> { id, group }
-            const diMap = {};
-            sourceRows.forEach(row => {
-                // Col L is Index 11 (Name KH)
-                const nameKH = cleanName(row[11]); 
-                if (nameKH) {
-                    diMap[nameKH] = {
-                        id: row[4] ? String(row[4]).trim() : null,  // Col E (Index 4)
-                        group: row[6] ? String(row[6]).trim() : null // Col G (Index 6)
-                    };
-                }
-            });
-
-            // 2. FETCH TARGET: DB_DUC_BKU (Starts at Row 13)
-            // We need: Col D (Name KH), Col Y (Internship)
-            // ⚠️ UPDATED: Fetching up to AK now
-            const targetRes = await sheets.spreadsheets.values.get({
-                spreadsheetId: READ_SPREADSHEET_ID, 
-                range: `'${READ_SHEET_NAME}'!A13:AK` 
-            });
-
-            const targetRows = targetRes.data.values || [];
-            const updates = [];
-
-            // 3. COMPARE & PREPARE UPDATES
-            targetRows.forEach((row, index) => {
-                // Calculate Real Row Number (Data starts at 13)
-                const realRowIndex = index + 13;
-
-                // Condition 1: Must have data in Column Y (Internship) - Index 24
-                const hasInternship = row[24] && row[24].trim() !== '';
-
-                // Condition 2: Must have a Khmer Name in Column D - Index 3
-                const targetName = cleanName(row[3]);
-
-                if (hasInternship && targetName) {
-                    const match = diMap[targetName];
-
-                    if (match) {
-                        // Prepare Write: Group (DI) -> Column AA (Index 26)
-                        if (match.group) {
-                            updates.push({
-                                range: `'${READ_SHEET_NAME}'!AA${realRowIndex}`,
-                                values: [[match.group]]
-                            });
-                        }
-
-                        // Prepare Write: ID_DI -> Column AK (Index 36)
-                        // ⚠️ UPDATED: Now writing to AK instead of AJ
-                        if (match.id) {
-                            updates.push({
-                                range: `'${READ_SHEET_NAME}'!AK${realRowIndex}`,
-                                values: [[match.id]]
-                            });
-                        }
-                    }
-                }
-            });
-
-            // 4. EXECUTE UPDATES
-            if (updates.length > 0) {
-                console.log(`📝 [Sync] Found matches. Updating ${updates.length} cells in DB_DUC_BKU...`);
-                await sheets.spreadsheets.values.batchUpdate({
-                    spreadsheetId: READ_SPREADSHEET_ID,
-                    resource: {
-                        valueInputOption: 'USER_ENTERED',
-                        data: updates
-                    }
-                });
-                console.log("✅ [Sync] Synchronization Complete!");
-                
-                // Optional: Update Memory Cache so the app sees new Groups immediately
-                await refreshStaffCache(sheets); 
-            } else {
-                console.log("ℹ️ [Sync] No matching updates found.");
-            }
-
-        } catch (error) {
-            console.error("❌ [Sync] Error:", error.message);
-        }
-    });
-}
 
 // SOCKET LOGGING
 io.on('connection', (socket) => {
