@@ -5,7 +5,7 @@ import { Search, ArrowLeft, Clock, ScanSearch, Coffee } from 'lucide-vue-next';
 import StaffCard from '../components/StaffCard.vue';
 import BreakCard from '../components/BreakCard.vue';
 import CustomModal from '../components/CustomModal.vue'; 
-import CustomToast from '../components/CustomToast.vue'; // 1. Import Toast
+import CustomToast from '../components/CustomToast.vue'; 
 import { useStaffStore } from '../stores/staffStore';
 
 // --- Configuration ---
@@ -21,7 +21,7 @@ const currentTab = ref('staff');
 const now = ref(new Date()); 
 const timerInterval = ref(null);
 
-// --- MODAL STATE (For Confirmation) ---
+// --- MODAL STATE ---
 const modal = ref({
     show: false,
     type: 'confirm',
@@ -33,7 +33,7 @@ const modal = ref({
     onConfirm: () => {}
 });
 
-// --- TOAST STATE (For Alerts) ---
+// --- TOAST STATE ---
 const toast = ref({
     show: false,
     type: 'success',
@@ -49,7 +49,6 @@ const openConfirmModal = (config) => {
 // Helper to show Toast
 const triggerToast = (type, title, message) => {
     toast.value = { show: true, type, title, message };
-    // Auto-hide handled by component, but we can reset state if needed here
 };
 
 const closeModal = () => { modal.value.show = false; };
@@ -71,19 +70,29 @@ const filteredStaff = computed(() => {
     );
 });
 
+// 🚀 UPDATED: Added Sorting Logic here
 const filteredBreaks = computed(() => {
+    // 1. Filter by Area
     let list = store.activeBreaks.filter(b => String(b.area) === String(currentArea));
+    
+    // 2. Filter by Search
     if (searchTerm.value) {
         const lower = searchTerm.value.toLowerCase();
         list = list.filter(b => b.name.toLowerCase().includes(lower) || String(b.id).includes(lower));
     }
-    return list;
+
+    // 3. SORT BY CARD NUMBER (1, 2, 3...)
+    return list.sort((a, b) => {
+        // Extract only the digits from the card ID (e.g. "DD_05" -> 5)
+        const numA = parseInt(String(a.card).replace(/\D/g, '')) || 0;
+        const numB = parseInt(String(b.card).replace(/\D/g, '')) || 0;
+        return numA - numB;
+    });
 });
 
 // --- UPDATED HANDLERS ---
 
 const handleStartBreak = (person) => {
-    // 1. CONFIRMATION (Center Modal)
     openConfirmModal({
         title: 'Start Break?',
         message: `${person.name_kh || person.name_en}`,
@@ -91,18 +100,13 @@ const handleStartBreak = (person) => {
         confirmText: 'Yes, Start',
         confirmColor: 'bg-white text-black hover:bg-slate-200',
         onConfirm: async () => {
-            // Clear search immediately
             searchTerm.value = "";
             nextTick(() => searchInputRef.value?.focus());
 
             try {
-                // API Call
                 const cardNum = await store.apiStartBreak(person, currentArea);
-                
-                // 2. SUCCESS (Bottom Right Toast)
                 triggerToast('success', 'Break Started', `Please take Card: ${cardNum}`);
             } catch(e) { 
-                // 3. ERROR (Bottom Right Toast)
                 triggerToast('error', 'Failed', 'Could not start break. Try again.');
                 console.error(e); 
             }
@@ -111,7 +115,6 @@ const handleStartBreak = (person) => {
 };
 
 const handleTimeIn = (id, name) => {
-    // 1. CONFIRMATION (Center Modal)
     openConfirmModal({
         title: 'Back to Work?',
         message: `Welcome back, ${name}`,
@@ -121,7 +124,6 @@ const handleTimeIn = (id, name) => {
         onConfirm: async () => {
             try {
                 await store.apiTimeIn(id);
-                // 2. SUCCESS (Bottom Right Toast)
                 triggerToast('success', 'Welcome Back!', 'Time in recorded successfully.');
             } catch (e) {
                 triggerToast('error', 'Error', 'Connection failed.');
