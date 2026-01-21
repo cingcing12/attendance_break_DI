@@ -3,9 +3,14 @@ import { ref } from 'vue'
 import { io } from 'socket.io-client'
 
 export const useStaffStore = defineStore('staff', () => {
-    // ⚠️ USE PRODUCTION URL (So all devices connect to the same server)
-    const API_URL = "https://attendance-break-di-vsc6.onrender.com";
     
+    // 🛠️ CONFIGURATION: AUTO-SWITCH URL
+    // If you are running 'npm run dev', it uses localhost:3000
+    // If you build for production, it uses your Render URL
+    const API_URL = import.meta.env.DEV 
+        ? "http://localhost:3000" 
+        : "https://attendance-break-di-vsc6.onrender.com";
+
     // --- STATE ---
     const allStaff = ref([]);
     const activeBreaks = ref([]);
@@ -30,7 +35,7 @@ export const useStaffStore = defineStore('staff', () => {
         socket.value = io(API_URL, { transports: ['websocket', 'polling'] });
         
         socket.value.on("connect", () => {
-            console.log("🟢 Pinia Store Connected to Socket");
+            console.log(`🟢 Connected to Socket (${API_URL})`);
         });
 
         // ⚡ FIX: Event name must match Backend ('database_updated')
@@ -59,8 +64,6 @@ export const useStaffStore = defineStore('staff', () => {
         });
         const data = await res.json();
         if(data.status === 'success') {
-            // No need to await fetchData here if Socket is working, 
-            // but keeping it makes the UI feel snappier for the user who clicked.
             await fetchData(); 
             return data.card;  
         }

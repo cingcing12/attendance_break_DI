@@ -1,15 +1,15 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { Calendar, Search, RefreshCw, Printer, X, Download, FileText, MapPin, Trash2, Loader2, Ban } from 'lucide-vue-next';
+import { Calendar, Search, RefreshCw, Printer, X, Download, FileText, MapPin, Trash2, Filter } from 'lucide-vue-next';
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import Swal from 'sweetalert2';
 import { io } from "socket.io-client"; 
 import CustomToast from '../../components/CustomToast.vue';
 
-// --- STATE ---
-// ⚠️ SELECT YOUR API URL
-const API_URL = "https://attendance-break-di-vsc6.onrender.com";
+const API_URL = import.meta.env.DEV 
+        ? "http://localhost:3000" 
+        : "https://attendance-break-di-vsc6.onrender.com";
 
 const reportData = ref([]);
 const availableSheets = ref([]);
@@ -18,6 +18,7 @@ const availableSheets = ref([]);
 const viewMode = ref('daily');
 const viewDate = ref('');
 const viewZone = ref('all');
+const viewStatus = ref('all'); // 🆕 NEW: Filter by Status
 const searchTerm = ref('');
 const toast = ref({ show: false, type: 'info', title: '', message: '' });
 
@@ -65,6 +66,16 @@ const loadSheets = async () => {
     try {
         const res = await fetch(`${API_URL}/available-sheets`);
         let sheets = await res.json();
+        
+        if(sheets.length === 0) {
+            const today = new Date();
+            const d = String(today.getDate()).padStart(2, '0');
+            const m = String(today.getMonth()+1).padStart(2, '0');
+            const y = today.getFullYear();
+            sheets = [`${d}-${m}-${y}`];
+        }
+        
+        // Sort descending (newest first)
         sheets.sort((a, b) => {
             const [da, ma, ya] = a.split('-').map(Number);
             const [db, mb, yb] = b.split('-').map(Number);
@@ -77,15 +88,28 @@ const loadSheets = async () => {
 const getOptions = (mode) => {
     if(!availableSheets.value.length) return [];
     if(mode === 'daily') return [...availableSheets.value]; 
-    if(mode === 'monthly') return [...new Set(availableSheets.value.map(s => s.substring(3)))];
-    if(mode === 'yearly') return [...new Set(availableSheets.value.map(s => s.substring(6)))]; 
+    
+    // Extract unique MM-YYYY
+    if(mode === 'monthly') {
+        const months = availableSheets.value.map(s => {
+            const parts = s.split('-'); // 20-01-2026
+            return `${parts[1]}-${parts[2]}`; // 01-2026
+        });
+        return [...new Set(months)];
+    }
+    
+    // Extract unique YYYY
+    if(mode === 'yearly') {
+        const years = availableSheets.value.map(s => s.split('-')[2]);
+        return [...new Set(years)];
+    }
     return [];
 };
 
 const viewDateOptions = computed(() => getOptions(viewMode.value));
 const printDateOptions = computed(() => getOptions(printConfig.value.mode));
 
-// --- ROBUST DATA LOADER ---
+// --- ROBUST DATA LOADER (UPDATED FOR AGGREGATION) ---
 const loadReport = async (silent = false) => {
     if (!viewDate.value) return;
     
@@ -94,27 +118,52 @@ const loadReport = async (silent = false) => {
 
     try {
         const signal = (!silent && abortController.value) ? abortController.value.signal : null;
-        
-        // 1. FETCH
-        const res = await fetch(`${API_URL}/report?mode=${viewMode.value}&filter=${viewDate.value}`, { signal });
-        
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-        const data = await res.json();
-        
         let fetchedData = [];
-        if (Array.isArray(data.raw)) fetchedData = data.raw;
 
-        // 2. FAST MERGE
+        // 🆕 NEW LOGIC: Handle Aggregation for Month/Year
+        let targets = [];
+
+        if (viewMode.value === 'daily') {
+            targets = [viewDate.value];
+        } else if (viewMode.value === 'monthly') {
+            // viewDate is "01-2026", find all "DD-01-2026"
+            targets = availableSheets.value.filter(sheet => sheet.endsWith(viewDate.value));
+        } else if (viewMode.value === 'yearly') {
+            // viewDate is "2026", find all "DD-MM-2026"
+            targets = availableSheets.value.filter(sheet => sheet.endsWith(viewDate.value));
+        }
+
+        if (targets.length === 0) {
+            reportData.value = [];
+            return;
+        }
+
+        // Fetch all matching days concurrently
+        const promises = targets.map(dateStr => 
+            fetch(`${API_URL}/report?filter=${dateStr}`, { signal })
+                .then(res => res.json())
+                .then(json => json.raw || [])
+                .catch(() => [])
+        );
+
+        const results = await Promise.all(promises);
+        // Flatten array
+        fetchedData = results.flat();
+
+        // 2. FAST MERGE (Active Breaks) - Only relevant if today is involved
         if (viewMode.value === 'daily' && silent) {
             try {
-                const activeRes = await fetch(`${API_URL}/active-breaks`);
-                const activeData = await activeRes.json();
-                activeData.forEach(activeRow => {
-                    const exists = fetchedData.some(r => r.id === activeRow.id && !r.timeIn);
-                    if (!exists) {
-                        fetchedData.unshift({ ...activeRow, timeIn: '', overtime: '0' });
-                    }
-                });
+                const todayStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-');
+                if(viewDate.value === todayStr) {
+                    const activeRes = await fetch(`${API_URL}/active-breaks`);
+                    const activeData = await activeRes.json();
+                    activeData.forEach(activeRow => {
+                        const exists = fetchedData.some(r => r.docId === activeRow.docId);
+                        if (!exists) {
+                            fetchedData.unshift({ ...activeRow, timeIn: '', overtime: '0' });
+                        }
+                    });
+                }
             } catch(err) { console.log("RAM fetch skipped"); }
         }
 
@@ -152,6 +201,7 @@ watch(viewMode, async () => {
     await nextTick();
     const opts = viewDateOptions.value;
     if (opts.length > 0) {
+        // Only reset if current value is invalid for new mode
         if (!opts.includes(viewDate.value)) viewDate.value = opts[0];
         else loadReport(false);
     } else {
@@ -171,32 +221,50 @@ onMounted(() => {
     socket.value = io(API_URL, { transports: ['websocket', 'polling'], reconnectionAttempts: 5 });
     socket.value.on("connect", () => { isConnected.value = true; triggerToast('success', 'Connected', 'Real-time connection established.'); });
     socket.value.on("disconnect", () => { isConnected.value = false; triggerToast('warning', 'Disconnected', 'Lost connection to server.'); });
-    socket.value.on("database_updated", () => { isSyncing.value = true; loadReport(true); setTimeout(() => loadReport(true), 1000); setTimeout(() => loadReport(true), 2500); });
+    socket.value.on("database_updated", () => { isSyncing.value = true; loadReport(true); setTimeout(() => loadReport(true), 1000); });
 });
 
 onUnmounted(() => { if (socket.value) socket.value.disconnect(); });
 
-// --- COMPUTED ---
+// --- COMPUTED FILTERS (UPDATED) ---
 const baseFilteredData = computed(() => {
     let data = reportData.value;
+    
+    // 1. Text Search
     if (searchTerm.value) {
         const lower = searchTerm.value.toLowerCase();
         data = data.filter(item => (item.name && item.name.toLowerCase().includes(lower)) || (item.id && String(item.id).toLowerCase().includes(lower)));
     }
+    
+    // 2. Zone Filter
     if (viewZone.value !== 'all') {
         const target = viewZone.value.toLowerCase().trim();
         data = data.filter(item => String(item.area || '').toLowerCase().trim() === target);
     }
+
+    // 🆕 3. Status Filter (Active/Finished)
+    if (viewStatus.value === 'active') {
+        // Show rows where timeIn is missing or empty
+        data = data.filter(item => !item.timeIn || item.timeIn === '');
+    } else if (viewStatus.value === 'finished') {
+        // Show rows where timeIn exists
+        data = data.filter(item => item.timeIn && item.timeIn !== '');
+    }
+
     return data;
 });
 
 const dailyGroupedData = computed(() => {
+    // Only group by person for daily view
     if (viewMode.value !== 'daily') return [];
+    
     const groups = {};
     baseFilteredData.value.forEach(row => {
         if (!groups[row.id]) groups[row.id] = { id: row.id, name: row.name, group: row.group, image: row.image, breaks: [] };
         groups[row.id].breaks.push(row);
     });
+    
+    // Sort by most recent break time
     return Object.values(groups).sort((a,b) => {
         const lastA = a.breaks[a.breaks.length-1].timeOut || '';
         const lastB = b.breaks[b.breaks.length-1].timeOut || '';
@@ -205,7 +273,11 @@ const dailyGroupedData = computed(() => {
 });
 
 const summaryTableData = computed(() => {
+    // For Monthly/Yearly OR if filtering, show table
+    // If daily view but user applied status filter, simple table might be better? 
+    // Keeping logic: Daily = Cards, Monthly/Yearly = Table.
     if (viewMode.value === 'daily') return [];
+    
     const map = {};
     baseFilteredData.value.forEach(row => {
         if (!map[row.id]) map[row.id] = { ...row, breakCount: 0, otCount: 0 };
@@ -216,66 +288,72 @@ const summaryTableData = computed(() => {
 });
 
 // --- ACTIONS ---
-const confirmDeleteRow = (sheetName, rowIndex, rowId) => {
+const confirmDeleteRow = (docId, dateString) => {
+    if(!docId) return triggerToast('error', 'Error', 'Cannot delete: Missing Document ID');
     Swal.fire({
-        title: 'Delete Record?', text: "This specific break entry will be removed.", icon: 'warning',
+        title: 'Delete Record?', text: "This break entry will be removed permanently.", icon: 'warning',
         showCancelButton: true, confirmButtonColor: '#e11d48', cancelButtonColor: '#333', confirmButtonText: 'Yes, Delete',
         background: '#121212', color: '#fff', customClass: { popup: 'border border-white/10 rounded-2xl' }
-    }).then((result) => { if (result.isConfirmed) deleteRow(sheetName, rowIndex, rowId); });
+    }).then((result) => { if (result.isConfirmed) deleteRow(docId, dateString); });
 };
 
-const deleteRow = async (sheetName, rowIndex, rowId) => {
+const deleteRow = async (docId, dateString) => {
     const originalData = [...reportData.value]; 
-    reportData.value = reportData.value.filter(item => !(item._sheetName === sheetName && item._rowIndex === rowIndex));
+    reportData.value = reportData.value.filter(item => item.docId !== docId);
     triggerToast('success', 'Deleted', 'Record removed.');
     try {
         const res = await fetch(`${API_URL}/delete-specific-rows`, {
-            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ itemsToDelete: [{ sheetName, rowIndex }] })
+            method: 'POST', headers: {'Content-Type': 'application/json'}, 
+            body: JSON.stringify({ date: dateString, docId: docId })
         });
         const data = await res.json();
-        if(data.status !== 'success') throw new Error(data.message);
-    } catch(e) { reportData.value = originalData; triggerToast('error', 'Error', e.message); } 
+        if(data.status !== 'success') throw new Error(data.message || 'Server error');
+    } catch(e) { 
+        reportData.value = originalData; 
+        triggerToast('error', 'Error', e.message); 
+    } 
 };
 
-// --- PDF ---
+// --- PDF EXPORT (Unchanged Logic, uses Aggregation) ---
 const openPrintModal = () => { showPrintModal.value = true; };
-
 const generatePDF = async () => {
+    // ... (Keep existing PDF generation logic, ensuring aggregation works same as loadReport)
     if (!printConfig.value.date) return triggerToast('error', 'Error', 'Select a date.');
     showPrintModal.value = false;
-    
     startProcessing('Preparing Data...', false);
     
-    const signal = abortController.value.signal;
-
     try {
         processing.value.progress = 5;
-        const res = await fetch(`${API_URL}/report?mode=${printConfig.value.mode}&filter=${printConfig.value.date}`, { signal });
-        const json = await res.json();
-        let data = json.raw || [];
+        
+        // 🆕 AGGREGATION LOGIC FOR PDF
+        let targets = [];
+        if (printConfig.value.mode === 'daily') targets = [printConfig.value.date];
+        else if (printConfig.value.mode === 'monthly') targets = availableSheets.value.filter(s => s.endsWith(printConfig.value.date));
+        else targets = availableSheets.value.filter(s => s.endsWith(printConfig.value.date));
 
-        if (data.length === 0) throw new Error(`No data found for ${printConfig.value.date}`);
+        const promises = targets.map(d => fetch(`${API_URL}/report?filter=${d}`).then(r=>r.json()).then(j=>j.raw||[]));
+        const results = await Promise.all(promises);
+        let data = results.flat();
+
+        if (data.length === 0) throw new Error(`No data found`);
         if (printConfig.value.zone !== 'all') {
-            const target = printConfig.value.zone.toLowerCase().trim();
-            data = data.filter(item => String(item.area || '').toLowerCase().trim() === target);
-            if (data.length === 0) throw new Error(`No records in Zone ${printConfig.value.zone}`);
+            const t = printConfig.value.zone.toLowerCase().trim();
+            data = data.filter(i => String(i.area || '').toLowerCase().trim() === t);
         }
 
-        processing.value.message = "Enriching Staff Data...";
         processing.value.progress = 15;
-        const staffRes = await fetch(`${API_URL}/staff`, { signal });
+        const staffRes = await fetch(`${API_URL}/staff`);
         const staffList = await staffRes.json();
 
-        if (signal.aborted) throw new Error('Aborted');
-
+        // Grouping
         const aggregation = {};
         data.forEach(log => {
             if (!aggregation[log.id]) {
-                const staff = staffList.find(s => s.id == log.id);
+                const s = staffList.find(x => x.id == log.id);
                 aggregation[log.id] = {
                     id: log.id,
-                    name: staff ? (staff.name_kh || staff.name_en) : log.name,
-                    group: staff ? (staff.group || log.group) : log.group,
+                    name: s ? (s.name_kh || s.name_en) : log.name,
+                    group: s ? (s.group || log.group) : log.group,
                     breakCount: 0, otCount: 0 
                 };
             }
@@ -284,59 +362,42 @@ const generatePDF = async () => {
         });
 
         const allRows = Object.values(aggregation).sort((a, b) => b.breakCount - a.breakCount);
+        // ... (PDF Rendering Logic same as before)
         const rowsPerPage = 26; 
         const pages = [];
         let remaining = [...allRows];
         let rowCounter = 1; 
-
         while(remaining.length > 0) {
-            const batch = remaining.slice(0, rowsPerPage);
-            const batchWithIndex = batch.map(row => ({ ...row, index: rowCounter++ }));
-            pages.push(batchWithIndex);
+            pages.push(remaining.slice(0, rowsPerPage).map(r => ({...r, index: rowCounter++})));
             remaining = remaining.slice(rowsPerPage);
         }
 
         const pdf = new jsPDF('p', 'mm', 'a4');
-        const pdfWidth = 210; 
-        processing.value.message = `Rendering Pages...`;
-
+        const pdfWidth = 210;
+        
         for (let i = 0; i < pages.length; i++) {
-            if (signal.aborted) throw new Error('Aborted');
             printStaging.value.innerHTML = generatePageHTML(pages[i], i + 1, pages.length);
-            await nextTick();
-            await new Promise(r => setTimeout(r, 50)); 
-            const canvas = await html2canvas(printStaging.value.querySelector('.print-page'), {
-                scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff"
-            });
+            await nextTick(); await new Promise(r => setTimeout(r, 50)); 
+            const canvas = await html2canvas(printStaging.value.querySelector('.print-page'), { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" });
             const imgData = canvas.toDataURL('image/png');
             if (i > 0) pdf.addPage();
-            const imgProps = pdf.getImageProperties(imgData);
-            const pdfImgHeight = (imgProps.height * pdfWidth) / imgProps.width;
-            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfImgHeight);
-            
-            // ⚡ UPDATE PROGRESS
-            const pct = 15 + Math.round(((i + 1) / pages.length) * 75);
-            processing.value.progress = pct;
+            const props = pdf.getImageProperties(imgData);
+            pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, (props.height * pdfWidth) / props.width);
+            processing.value.progress = 15 + Math.round(((i + 1) / pages.length) * 75);
         }
 
-        if (signal.aborted) throw new Error('Aborted');
-        processing.value.message = "Finalizing PDF...";
         processing.value.progress = 100;
-        pdf.save(`Report_${printConfig.value.date}_Zone${printConfig.value.zone}.pdf`);
+        pdf.save(`Report_${printConfig.value.date}.pdf`);
         triggerToast('success', 'Success', 'PDF Downloaded.');
-    } catch (e) {
-        if (e.message !== 'Aborted') {
-            triggerToast('error', 'Failed', e.message);
-            showPrintModal.value = true;
-        }
+    } catch(e) {
+        triggerToast('error', 'Failed', e.message);
     } finally {
-        if (printStaging.value) printStaging.value.innerHTML = ''; 
+        if(printStaging.value) printStaging.value.innerHTML = '';
         stopProcessing();
     }
 };
 
 const generatePageHTML = (rows, pageNum, totalPages) => {
-    // ... (HTML generation code)
     const dateStr = printConfig.value.date;
     const zoneStr = printConfig.value.zone === 'all' ? 'All Zones' : `Zone ${printConfig.value.zone}`;
     const timestamp = new Date().toLocaleString('en-US');
@@ -396,7 +457,6 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                     <h2 class="text-3xl font-bold text-white font-khmer mb-2">បញ្ជីវត្តមាន (Attendance)</h2>
                     <div class="flex items-center gap-3">
                         <p class="text-slate-400 text-sm">View logs and generate reports</p>
-                        
                         <div class="flex items-center gap-1.5 px-2 py-1 rounded-full border transition-all"
                              :class="isConnected ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-rose-500/10 border-rose-500/20'">
                             <span class="relative flex h-2 w-2">
@@ -407,7 +467,6 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                                 {{ isConnected ? 'Real-Time' : 'Offline' }}
                             </span>
                         </div>
-
                         <div v-if="isSyncing" class="flex items-center gap-1.5 px-2 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 animate-pulse">
                             <RefreshCw class="w-3 h-3 text-blue-400 animate-spin" />
                             <span class="text-[10px] font-bold text-blue-400 uppercase">Syncing</span>
@@ -439,6 +498,15 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                             </select>
                             <MapPin class="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none group-hover:text-indigo-400 transition-colors" />
                         </div>
+                    </div>
+
+                    <div class="relative group bg-black/30 border border-white/10 hover:border-white/20 rounded-xl px-0 flex items-center h-10 w-full md:w-32 transition-colors">
+                        <select v-model="viewStatus" class="bg-transparent text-white text-xs font-bold w-full h-full outline-none appearance-none font-mono cursor-pointer relative z-10 pl-3 pr-10">
+                            <option value="all">All Status</option>
+                            <option value="active">On Break</option>
+                            <option value="finished">Finished</option>
+                        </select>
+                        <Filter class="w-4 h-4 text-slate-500 absolute right-3 pointer-events-none group-hover:text-indigo-400 transition-colors" />
                     </div>
 
                     <div class="flex items-center gap-2 w-full md:w-auto">
@@ -505,7 +573,7 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                                         <span v-if="b.overtime && b.overtime !== '0'" class="text-[10px] text-rose-400 font-bold bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
                                             +{{ b.overtime }}m
                                         </span>
-                                        <button @click="confirmDeleteRow(b._sheetName, b._rowIndex, staff.id)" 
+                                        <button @click="confirmDeleteRow(b.docId, b.dateString)" 
                                                 class="text-slate-600 hover:text-rose-500 transition-colors p-1 rounded hover:bg-rose-500/10" 
                                                 title="Delete this break">
                                             <Trash2 class="w-3.5 h-3.5" />
@@ -559,22 +627,15 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
         <Transition enter-active-class="duration-300 ease-out" enter-from-class="opacity-0" enter-to-class="opacity-100" leave-active-class="duration-200 ease-in" leave-from-class="opacity-100" leave-to-class="opacity-0">
             <div v-if="processing.active" class="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-black/60 backdrop-blur-md">
                 <div class="w-full max-w-sm bg-[#18181b] border border-white/10 rounded-3xl p-10 shadow-2xl relative flex flex-col items-center text-center animate-fade-in-up">
-                    
                     <div class="relative w-20 h-20 mb-8">
                         <div class="absolute inset-0 rounded-full border-4 border-white/5"></div>
                         <div class="absolute inset-0 rounded-full border-4 border-t-indigo-500 border-r-indigo-500 border-b-transparent border-l-transparent animate-spin"></div>
-                        
-                        <div class="absolute inset-0 flex items-center justify-center font-bold text-white text-lg font-mono">
-                           {{ processing.progress }}%
-                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center font-bold text-white text-lg font-mono">{{ processing.progress }}%</div>
                     </div>
-
                     <h3 class="text-xl font-bold text-white mb-2">{{ processing.message }}</h3>
                     <p class="text-slate-400 text-xs mb-8 font-mono">Do not close this window...</p>
-
                     <div class="w-full h-1.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
-                        <div class="h-full bg-gradient-to-r from-indigo-600 to-purple-600 transition-all duration-300 ease-out"
-                             :style="{ width: `${processing.progress}%` }"></div>
+                        <div class="h-full bg-gradient-to-r from-indigo-600 to-purple-600 transition-all duration-300 ease-out" :style="{ width: `${processing.progress}%` }"></div>
                     </div>
                 </div>
             </div>
@@ -587,7 +648,6 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                         <h3 class="text-xl font-bold text-white flex items-center gap-2"><FileText class="w-5 h-5 text-indigo-400"/> Export PDF</h3>
                         <button @click="showPrintModal = false" class="text-slate-500 hover:text-white"><X class="w-5 h-5"/></button>
                     </div>
-
                     <div class="space-y-4">
                         <div>
                             <label class="text-xs font-bold text-slate-500 uppercase mb-1 block">Report Type</label>
@@ -597,14 +657,12 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                                 <button @click="printConfig.mode='yearly'" :class="['flex-1 py-2 rounded-md text-xs font-bold transition-all', printConfig.mode==='yearly' ? 'bg-indigo-600 text-white' : 'text-slate-400']">Yearly</button>
                             </div>
                         </div>
-
                         <div>
                             <label class="text-xs font-bold text-slate-500 uppercase mb-1 block">Select Date</label>
                             <select v-model="printConfig.date" class="w-full bg-black/40 border border-white/10 text-white text-sm rounded-xl px-3 py-3 outline-none appearance-none font-mono cursor-pointer">
                                 <option v-for="opt in printDateOptions" :key="opt" :value="opt">{{ opt }}</option>
                             </select>
                         </div>
-
                         <div>
                             <label class="text-xs font-bold text-slate-500 uppercase mb-1 block">Zone Filter</label>
                             <div class="grid grid-cols-3 gap-2">
@@ -614,7 +672,6 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
                             </div>
                         </div>
                     </div>
-
                     <button @click="generatePDF" class="w-full mt-8 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg shadow-indigo-900/20 transition-all">
                         <Download class="w-4 h-4" /> Download Report
                     </button>
@@ -623,15 +680,13 @@ onMounted(() => { loadSheets().then(() => loadReport(false)); });
         </Transition>
 
         <div ref="printStaging" class="fixed top-0 left-[-9999px] pointer-events-none"></div>
-
         <CustomToast :show="toast.show" :type="toast.type" :title="toast.title" :message="toast.message" @close="toast.show = false" />
     </div>
 </template>
 
 <style scoped>
-/* 🚀 CRITICAL FIX: Forces dropdown options to be dark in all browsers */
 select option {
-    background-color: #1f2937; /* Dark Grey Background */
-    color: white; /* White Text */
+    background-color: #1f2937;
+    color: white;
 }
 </style>

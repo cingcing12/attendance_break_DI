@@ -4,7 +4,9 @@ import { Users, FileText, Clock } from 'lucide-vue-next';
 import { io } from "socket.io-client";
 
 const stats = ref({ staff_today: 0, total_records: 0, total_ot: 0 });
-const API_URL = "https://attendance-break-di-vsc6.onrender.com"; 
+const API_URL = import.meta.env.DEV 
+        ? "http://localhost:3000" 
+        : "https://attendance-break-di-vsc6.onrender.com";
 
 const fetchStats = async () => {
     try {
