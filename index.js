@@ -52,6 +52,10 @@ const MEMORY = {
     cardSettings: [] 
 };
 
+// 🔒 RACE CONDITION LOCKS
+const processingUsers = new Set(); // Prevents same user double clicking
+const processingCards = new Set(); // 🚀 NEW: Prevents same card being assigned twice
+
 // ==========================
 // 📅 DATE HELPERS
 // ==========================
@@ -64,15 +68,15 @@ function getTodayDateString() {
     const day = String(d.getDate()).padStart(2, '0');
     const month = String(d.getMonth() + 1).padStart(2, '0');
     const year = d.getFullYear();
-    return `${day}-${month}-${year}`; // e.g., "20-01-2026"
-}
-
-function getCollectionName(dateStr) {
-    return `breaks_${dateStr}`;
+    return `${day}-${month}-${year}`; 
 }
 
 function getTodayCollectionName() {
     return `breaks_${getTodayDateString()}`;
+}
+
+function getCollectionName(dateStr) {
+    return `breaks_${dateStr}`;
 }
 
 function getCurrentTimeString() {
@@ -152,11 +156,12 @@ async function refreshStaffCache() {
 }
 
 // ==========================
-// CARD LOGIC
+// CARD LOGIC (UPDATED WITH LOCK)
 // ==========================
 async function getNextAvailableCard(zone) {
     const todayCollection = getTodayCollectionName(); 
     
+    // 1. Get cards ALREADY used in DB
     const snapshot = await db.collection(todayCollection)
         .where('status', '==', 'ON_BREAK')
         .where('area', '==', zone)
@@ -167,15 +172,22 @@ async function getNextAvailableCard(zone) {
         if (doc.data().card) usedCards.add(doc.data().card);
     });
 
+    // 2. Get list of valid cards for this zone
     let availableInZone = MEMORY.cardSettings.filter(c => c.zone === zone);
+    
+    // Fallback if settings empty
     if(availableInZone.length === 0) {
         const start = zone === 'B' ? 1 : 51;
         const end = zone === 'B' ? 50 : 150;
         for(let i=start; i<=end; i++) availableInZone.push({ cardId: `DD_${String(i).padStart(2,'0')}` });
     }
 
+    // 3. Find first card that is NOT used in DB AND NOT currently processing
     for (const card of availableInZone) {
-        if (!usedCards.has(card.cardId)) return card.cardId;
+        // 🚀 CRITICAL FIX: Check processingCards Set
+        if (!usedCards.has(card.cardId) && !processingCards.has(card.cardId)) {
+            return card.cardId;
+        }
     }
     return null;
 }
@@ -198,30 +210,21 @@ async function loadCardSettings() {
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - Daily Collections Mode'));
+app.get('/', (req, res) => res.send('Staff Hub API - Double Lock Secured 🔒'));
 
-// 🚀 FIXED: Added the missing route that Frontend is looking for!
 app.get('/available-sheets', async (req, res) => {
     try {
-        // List all collections in the database
         const collections = await db.listCollections();
-        
-        // Filter only ones that start with 'breaks_' and extract the date part
         const dates = collections
             .map(c => c.id)
             .filter(id => id.startsWith('breaks_'))
             .map(id => id.replace('breaks_', ''));
 
-        // If no dates exist yet (brand new DB), ensure Today is included
         const today = getTodayDateString();
-        if (!dates.includes(today)) {
-            dates.push(today);
-        }
+        if (!dates.includes(today)) dates.push(today);
 
         res.json(dates);
     } catch (error) {
-        console.error("Error listing sheets:", error);
-        // Fallback to today if listing fails
         res.json([getTodayDateString()]);
     }
 });
@@ -234,7 +237,6 @@ app.post('/login', (req, res) => {
 
 app.get('/staff', (req, res) => res.json(MEMORY.staffCache.data));
 
-// === GET ACTIVE BREAKS (TODAY ONLY) ===
 app.get('/active-breaks', async (req, res) => {
     try {
         const todayCollection = getTodayCollectionName();
@@ -249,7 +251,6 @@ app.get('/active-breaks', async (req, res) => {
             if (data.id && MEMORY.staffCache.idMap[data.id]) imgUrl = MEMORY.staffCache.idMap[data.id];
             else if (data.name && MEMORY.staffCache.nameMap[safeKey(data.name)]) imgUrl = MEMORY.staffCache.nameMap[safeKey(data.name)];
             
-            // ⚠️ Added docId so you can delete it from frontend!
             activeList.push({ ...data, image: imgUrl, docId: doc.id });
         });
         res.json(activeList);
@@ -258,24 +259,44 @@ app.get('/active-breaks', async (req, res) => {
     }
 });
 
-// === START BREAK ===
+// === 🚀 START BREAK (FIXED USER & CARD RACE CONDITIONS) ===
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
     if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
     const targetId = String(id).trim();
 
+    // 🔒 1. USER LOCK: Check if this user is currently processing
+    if (processingUsers.has(targetId)) {
+        return res.json({ status: 'success', message: 'Request already in progress', card: 'PROCESSING' });
+    }
+    processingUsers.add(targetId);
+
+    // Variable to hold the chosen card so we can unlock it later
+    let assignedCard = null;
+
     try {
         const todayCollection = getTodayCollectionName();
 
+        // 2. DB CHECK: Check if already on break
         const existing = await db.collection(todayCollection)
             .where('id', '==', targetId)
             .where('status', '==', 'ON_BREAK')
             .get();
 
-        if (!existing.empty) return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
+        if (!existing.empty) {
+            return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
+        }
 
-        const card = await getNextAvailableCard(area);
-        if (!card) return res.status(400).json({ error: 'No available card in this zone' });
+        // 3. CARD ASSIGNMENT + LOCK
+        assignedCard = await getNextAvailableCard(area);
+        
+        if (!assignedCard) {
+            return res.status(400).json({ error: 'No available card in this zone' });
+        }
+
+        // 🚀 IMMEDIATELY LOCK THE CARD IN MEMORY
+        // If Device B comes 1ms later, it will see this card is in `processingCards` and skip it.
+        processingCards.add(assignedCard);
 
         const timeStr = getCurrentTimeString();
         const dateStr = getTodayDateString();
@@ -288,20 +309,27 @@ app.post('/break', async (req, res) => {
             timeOutDate: Timestamp.now(),
             area,
             dateString: dateStr,
-            card,
+            card: assignedCard,
             status: 'ON_BREAK',
             overtime: '0',
             timeIn: ''
         };
 
+        // 4. WRITE TO DB
         await db.collection(todayCollection).add(newDoc);
 
-        res.json({ status: 'success', timeOut: timeStr, card: card });
+        res.json({ status: 'success', timeOut: timeStr, card: assignedCard });
         io.emit('database_updated', { type: 'break', id: targetId });
 
     } catch (e) {
         console.error("Break Error:", e);
         res.status(500).json({ error: e.message });
+    } finally {
+        // 🔓 UNLOCK EVERYTHING
+        processingUsers.delete(targetId);
+        if (assignedCard) {
+            processingCards.delete(assignedCard);
+        }
     }
 });
 
@@ -311,18 +339,18 @@ app.post('/timein', async (req, res) => {
     if (!id) return res.status(400).json({ error: 'ID required' });
     const targetId = String(id).trim();
 
+    if (processingUsers.has(targetId)) return res.json({ status: 'success', message: 'Processing...' });
+    processingUsers.add(targetId);
+
     try {
         const todayCollection = getTodayCollectionName();
-
         const snapshot = await db.collection(todayCollection)
             .where('id', '==', targetId)
             .where('status', '==', 'ON_BREAK')
             .limit(1)
             .get();
 
-        if (snapshot.empty) {
-            return res.json({ status: 'success', message: 'Already timed in or not found in today\'s list' });
-        }
+        if (snapshot.empty) return res.json({ status: 'success', message: 'Already timed in' });
 
         const doc = snapshot.docs[0];
         const data = doc.data();
@@ -346,34 +374,27 @@ app.post('/timein', async (req, res) => {
     } catch (e) {
         console.error("Timein Error:", e);
         res.status(500).json({ error: e.message });
+    } finally {
+        processingUsers.delete(targetId);
     }
 });
 
-// === STATS (TODAY) ===
+// === STATS ===
 app.get('/stats/today', async (req, res) => {
     try {
         const todayCollection = getTodayCollectionName();
         const snapshot = await db.collection(todayCollection).get();
-
         const uniqueIds = new Set();
         let totalRecords = 0;
         let totalOT = 0;
-
         snapshot.forEach(doc => {
             const data = doc.data();
             totalRecords++;
             uniqueIds.add(data.id);
             if (data.overtime && data.overtime !== '0') totalOT++;
         });
-
-        res.json({
-            staff_today: uniqueIds.size,
-            total_records: totalRecords,
-            total_ot: totalOT
-        });
-    } catch (error) {
-        res.json({ staff_today: 0, total_records: 0, total_ot: 0 });
-    }
+        res.json({ staff_today: uniqueIds.size, total_records: totalRecords, total_ot: totalOT });
+    } catch (error) { res.json({ staff_today: 0, total_records: 0, total_ot: 0 }); }
 });
 
 // === CARDS SETTINGS ===
@@ -398,93 +419,52 @@ app.post('/cards/delete', async (req, res) => {
     res.json({ status: 'success' });
 });
 
-// === REPORT / HISTORY ===
+// === REPORT ===
 app.get('/report', async (req, res) => {
-    const { filter } = req.query; // Expecting "20-01-2026"
+    const { filter } = req.query; 
     if(!filter) return res.json({ raw: [] });
-
     try {
         const targetCollection = getCollectionName(filter);
         const snapshot = await db.collection(targetCollection).get();
-
         const rows = [];
         snapshot.forEach(doc => {
             const data = doc.data();
             let imgUrl = '';
             if (data.id && MEMORY.staffCache.idMap[data.id]) imgUrl = MEMORY.staffCache.idMap[data.id];
-            
-            // ⚠️ Added docId here too for deletions in reports
             rows.push({ ...data, image: imgUrl, docId: doc.id });
         });
-        
         res.json({ raw: rows });
-    } catch (e) {
-        res.json({ raw: [] });
-    }
+    } catch (e) { res.json({ raw: [] }); }
 });
 
-// === DELETE ROW ===
 app.post('/delete-specific-rows', async (req, res) => {
     const { date, docId } = req.body; 
-    if (!date || !docId) return res.status(400).json({ error: "Missing Date or ID" });
-
     try {
         const collectionName = getCollectionName(date);
         await db.collection(collectionName).doc(docId).delete();
         res.json({ status: 'success' });
         io.emit('database_updated', { type: 'delete' }); 
-    } catch (e) {
-        res.status(500).json({ error: e.message });
-    }
+    } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ==========================
-// 🗑️ MASS DELETE (By Date/Month/Year)
-// ==========================
 app.post('/delete-sheets', async (req, res) => {
-    const { sheetNames } = req.body; // Expects array: ["20-01-2026", "21-01-2026"]
-    
-    if (!sheetNames || !Array.isArray(sheetNames) || sheetNames.length === 0) {
-        return res.status(400).json({ error: 'Missing dates to delete' });
-    }
-
-    console.log(`🗑️ Deleting collections for: ${sheetNames.join(', ')}`);
-
+    const { sheetNames } = req.body;
     try {
-        // Loop through every date selected
         for (const dateStr of sheetNames) {
-            const collectionName = `breaks_${dateStr}`; // matches getCollectionName()
-            const collectionRef = db.collection(collectionName);
-            
-            // 1. Get all documents in this day's collection
+            const collectionRef = db.collection(`breaks_${dateStr}`);
             const snapshot = await collectionRef.get();
-            
-            if (snapshot.size === 0) continue; // Skip if already empty
-
-            // 2. Delete them in batches (Firestore limit is 500 ops per batch)
+            if (snapshot.size === 0) continue;
             const batch = db.batch();
-            snapshot.docs.forEach((doc) => {
-                batch.delete(doc.ref);
-            });
-
-            await batch.commit(); // Execute delete
-            console.log(`✅ Deleted collection: ${collectionName}`);
+            snapshot.docs.forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
         }
-
-        res.json({ status: 'success', deletedCount: sheetNames.length });
-        
-        // Notify frontend to refresh
+        res.json({ status: 'success' });
         io.emit('database_updated', { type: 'delete_sheets' });
-
-    } catch (err) {
-        console.error("Delete Error:", err);
-        res.status(500).json({ status: 'error', message: err.message });
-    }
+    } catch (err) { res.status(500).json({ status: 'error', message: err.message }); }
 });
 
-// === STARTUP ===
 server.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 Firebase Server (Daily Mode) running on port ${PORT}`);
+    console.log(`🚀 Firebase Server (Secure) running on port ${PORT}`);
     await loadCardSettings();
     await refreshStaffCache();
     setInterval(refreshStaffCache, 10 * 60 * 1000);
