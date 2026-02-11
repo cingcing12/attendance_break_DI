@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed, watch } from 'vue';
 import Swal from 'sweetalert2';
-import { Database, Trash2, CheckSquare, Plus, XSquare, X, ArrowRightLeft } from 'lucide-vue-next';
+import { Database, Trash2, CheckSquare, Plus, XSquare, X, Lock, Unlock } from 'lucide-vue-next';
 
 // ⚠️ CHECK API URL
 const API_URL = import.meta.env.DEV 
@@ -13,6 +13,10 @@ const loading = ref(false);
 const isSelectMode = ref(false);
 const selectedCards = ref(new Set());
 
+// Zone Status State (Defaults to true/Open)
+const zoneA_Active = ref(true);
+const zoneB_Active = ref(true);
+
 // Manage Data Modal State
 const showManageModal = ref(false);
 const availableSheets = ref([]);
@@ -21,21 +25,86 @@ const selectedSheets = ref(new Set());
 
 // 🔒 BODY SCROLL LOCK
 watch(showManageModal, (isOpen) => {
-    if (isOpen) {
-        document.body.style.overflow = 'hidden';
-    } else {
-        document.body.style.overflow = '';
-    }
+    if (isOpen) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
 });
 
-// --- CARD LOGIC ---
-const loadCards = async () => {
+// --- LOAD DATA ---
+const loadData = async () => {
     loading.value = true;
     try {
-        const res = await fetch(`${API_URL}/cards`);
-        cards.value = await res.json();
+        // 1. Load Cards
+        const cardRes = await fetch(`${API_URL}/cards`);
+        cards.value = await cardRes.json();
+
+        // 2. Load Settings (Zone Status)
+        try {
+            const settingsRes = await fetch(`${API_URL}/settings`); 
+            if (settingsRes.ok) {
+                const settings = await settingsRes.json();
+                console.log("Settings Loaded:", settings); // Debug log
+                if(settings) {
+                    zoneA_Active.value = settings.zoneA;
+                    zoneB_Active.value = settings.zoneB;
+                }
+            }
+        } catch (err) {
+            console.warn("Settings endpoint error, defaulting to OPEN", err);
+        }
+
     } catch(e) { console.error(e); }
     loading.value = false;
+};
+
+// --- TOGGLE ZONE STATUS ---
+const toggleZoneStatus = async (zone, currentState) => {
+    const newState = !currentState;
+    const action = newState ? 'Open' : 'Close';
+    
+    // Confirm Action
+    const result = await Swal.fire({
+        title: `${action} Zone ${zone}?`,
+        text: newState ? `Staff will be able to enter Zone ${zone}.` : `Zone ${zone} will be locked for staff.`,
+        icon: newState ? 'question' : 'warning',
+        showCancelButton: true,
+        confirmButtonColor: newState ? '#10b981' : '#f43f5e',
+        confirmButtonText: `Yes, ${action} it`,
+        background: '#121212', color: '#fff'
+    });
+
+    if (result.isConfirmed) {
+        try {
+            // 1. Optimistic Update (Update UI immediately)
+            if(zone === 'A') zoneA_Active.value = newState;
+            if(zone === 'B') zoneB_Active.value = newState;
+
+            // 2. Send to Backend
+            const res = await fetch(`${API_URL}/settings/update`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ 
+                    zoneA: zone === 'A' ? newState : zoneA_Active.value,
+                    zoneB: zone === 'B' ? newState : zoneB_Active.value
+                })
+            });
+            
+            if(!res.ok) throw new Error("Failed to save");
+
+            Swal.fire({ 
+                icon: 'success', 
+                title: `Zone ${zone} is now ${action}ed`, 
+                toast: true, position: 'top-end', 
+                showConfirmButton: false, timer: 1500, 
+                background: '#121212', color: '#fff' 
+            });
+
+        } catch (e) {
+            Swal.fire('Error', 'Failed to update status', 'error');
+            // Revert on error
+            if(zone === 'A') zoneA_Active.value = !newState;
+            if(zone === 'B') zoneB_Active.value = !newState;
+        }
+    }
 };
 
 const zoneACards = computed(() => cards.value.filter(c => c.zone === 'A').sort((a,b) => a.cardId.localeCompare(b.cardId, undefined, {numeric: true})));
@@ -46,7 +115,9 @@ const toggleSelection = (id) => {
     else selectedCards.value.add(id);
 };
 
-// Batch Actions
+// ... [KEEP YOUR BATCH FUNCTIONS HERE: performBatchMove, performBatchDelete, openAddCardModal] ...
+// (I will assume these are the same as before)
+
 const performBatchMove = async (targetZone) => {
     if (selectedCards.value.size === 0) return;
     const result = await Swal.fire({
@@ -72,7 +143,7 @@ const performBatchMove = async (targetZone) => {
             await Promise.all(promises);
             isSelectMode.value = false;
             selectedCards.value.clear();
-            await loadCards();
+            await loadData();
             Swal.fire({ icon: 'success', title: 'Moved!', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500, background: '#121212', color: '#fff' });
         } catch(e) { Swal.fire('Error', 'Batch move failed', 'error'); }
         loading.value = false;
@@ -104,7 +175,7 @@ const performBatchDelete = async () => {
             await Promise.all(promises);
             isSelectMode.value = false;
             selectedCards.value.clear();
-            await loadCards();
+            await loadData();
             Swal.fire({ icon: 'success', title: 'Deleted!', toast: true, position: 'top-end', showConfirmButton: false, timer: 1500, background: '#121212', color: '#fff' });
         } catch(e) { Swal.fire('Error', 'Batch delete failed', 'error'); }
         loading.value = false;
@@ -139,11 +210,10 @@ const openAddCardModal = async () => {
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ cardId: id, zone })
         });
-        loadCards();
+        loadData();
     }
 };
 
-// --- DATA MANAGEMENT ---
 const openManageData = async () => {
     showManageModal.value = true;
     try {
@@ -219,7 +289,7 @@ const deleteSheets = async () => {
     }
 };
 
-onMounted(() => loadCards());
+onMounted(() => loadData());
 </script>
 
 <template>
@@ -227,7 +297,7 @@ onMounted(() => loadCards());
         <header class="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-10 gap-4">
             <div>
                 <h2 class="text-3xl font-bold text-white font-khmer mb-2">ការកំណត់ (Settings)</h2>
-                <p class="text-slate-400 text-sm">Manage cards and system data</p>
+                <p class="text-slate-400 text-sm">Manage cards, system data, and zones</p>
             </div>
             <div class="flex gap-3">
                 <button @click="openManageData" class="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-sm transition-all">
@@ -246,14 +316,29 @@ onMounted(() => loadCards());
         </header>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-20">
-            <div class="bg-[#121212] border border-cyan-500/20 rounded-3xl p-6">
+            <div class="bg-[#121212] border border-cyan-500/20 rounded-3xl p-6 relative overflow-hidden">
+                <div class="absolute top-0 left-0 w-1 h-full" :class="zoneA_Active ? 'bg-cyan-500' : 'bg-red-500'"></div>
+
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-xl font-bold text-cyan-400 font-khmer flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-cyan-400"></span> តំបន់ A (Zone A)
-                    </h3>
-                    <span class="text-xs text-slate-500 font-mono">{{ zoneACards.length }} Cards</span>
+                    <div>
+                        <h3 class="text-xl font-bold text-cyan-400 font-khmer flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" :class="zoneA_Active ? 'bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.5)]' : 'bg-red-500'"></span> 
+                            តំបន់ A (Zone A)
+                        </h3>
+                        <span class="text-xs text-slate-500 font-mono mt-1 block">{{ zoneACards.length }} Cards • {{ zoneA_Active ? 'Online' : 'Closed' }}</span>
+                    </div>
+
+                    <button @click="toggleZoneStatus('A', zoneA_Active)" 
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition-all"
+                        :class="zoneA_Active 
+                            ? 'bg-cyan-900/20 text-cyan-400 border-cyan-500/30 hover:bg-red-900/20 hover:text-red-400 hover:border-red-500/50' 
+                            : 'bg-red-900/20 text-red-400 border-red-500/30 hover:bg-cyan-900/20 hover:text-cyan-400 hover:border-cyan-500/50'">
+                        <component :is="zoneA_Active ? Unlock : Lock" class="w-4 h-4" />
+                        {{ zoneA_Active ? 'Close Zone' : 'Open Zone' }}
+                    </button>
                 </div>
-                <div class="flex flex-wrap gap-2 content-start">
+
+                <div class="flex flex-wrap gap-2 content-start min-h-[50px]">
                     <div v-for="card in zoneACards" :key="card.cardId" 
                          @click="isSelectMode ? toggleSelection(card.cardId) : null"
                          :class="['px-3 py-1.5 rounded-lg text-xs font-mono font-bold cursor-pointer border transition-all', 
@@ -263,14 +348,29 @@ onMounted(() => loadCards());
                 </div>
             </div>
 
-            <div class="bg-[#121212] border border-rose-500/20 rounded-3xl p-6">
+            <div class="bg-[#121212] border border-rose-500/20 rounded-3xl p-6 relative overflow-hidden">
+                 <div class="absolute top-0 left-0 w-1 h-full" :class="zoneB_Active ? 'bg-rose-500' : 'bg-red-500'"></div>
+
                 <div class="flex items-center justify-between mb-6">
-                    <h3 class="text-xl font-bold text-rose-400 font-khmer flex items-center gap-2">
-                        <span class="w-3 h-3 rounded-full bg-rose-400"></span> តំបន់ B (Zone B)
-                    </h3>
-                    <span class="text-xs text-slate-500 font-mono">{{ zoneBCards.length }} Cards</span>
+                    <div>
+                        <h3 class="text-xl font-bold text-rose-400 font-khmer flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full" :class="zoneB_Active ? 'bg-rose-400 shadow-[0_0_10px_rgba(251,113,133,0.5)]' : 'bg-red-500'"></span> 
+                            តំបន់ B (Zone B)
+                        </h3>
+                        <span class="text-xs text-slate-500 font-mono mt-1 block">{{ zoneBCards.length }} Cards • {{ zoneB_Active ? 'Online' : 'Closed' }}</span>
+                    </div>
+
+                    <button @click="toggleZoneStatus('B', zoneB_Active)" 
+                        class="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold border transition-all"
+                        :class="zoneB_Active 
+                            ? 'bg-rose-900/20 text-rose-400 border-rose-500/30 hover:bg-red-900/20 hover:text-red-400 hover:border-red-500/50' 
+                            : 'bg-red-900/20 text-red-400 border-red-500/30 hover:bg-rose-900/20 hover:text-rose-400 hover:border-rose-500/50'">
+                        <component :is="zoneB_Active ? Unlock : Lock" class="w-4 h-4" />
+                        {{ zoneB_Active ? 'Close Zone' : 'Open Zone' }}
+                    </button>
                 </div>
-                <div class="flex flex-wrap gap-2 content-start">
+
+                <div class="flex flex-wrap gap-2 content-start min-h-[50px]">
                     <div v-for="card in zoneBCards" :key="card.cardId" 
                          @click="isSelectMode ? toggleSelection(card.cardId) : null"
                          :class="['px-3 py-1.5 rounded-lg text-xs font-mono font-bold cursor-pointer border transition-all', 

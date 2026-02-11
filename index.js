@@ -49,20 +49,21 @@ const auth = new google.auth.GoogleAuth({
 // === MEMORY ===
 const MEMORY = {
     staffCache: { data: [], idMap: {}, nameMap: {} },
-    cardSettings: [] 
+    cardSettings: [],
+    // 🆕 DEFAULT ZONE SETTINGS (Open by default)
+    zoneSettings: { zoneA: true, zoneB: true } 
 };
 
 // 🔒 RACE CONDITION LOCKS
-const processingUsers = new Set(); // Prevents same user double clicking
-const processingCards = new Set(); // 🚀 NEW: Prevents same card being assigned twice
+const processingUsers = new Set(); 
+const processingCards = new Set(); 
 
-// ==========================
-// 📅 DATE HELPERS
-// ==========================
+// ... [KEEP YOUR DATE HELPERS & STAFF CACHE FUNCTIONS HERE] ...
+// (getCambodiaDate, getTodayDateString, refreshStaffCache, etc.) - No changes needed there.
+
 function getCambodiaDate() {
     return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Phnom_Penh" }));
 }
-
 function getTodayDateString() {
     const d = getCambodiaDate();
     const day = String(d.getDate()).padStart(2, '0');
@@ -70,24 +71,13 @@ function getTodayDateString() {
     const year = d.getFullYear();
     return `${day}-${month}-${year}`; 
 }
-
-function getTodayCollectionName() {
-    return `breaks_${getTodayDateString()}`;
-}
-
-function getCollectionName(dateStr) {
-    return `breaks_${dateStr}`;
-}
-
+function getTodayCollectionName() { return `breaks_${getTodayDateString()}`; }
+function getCollectionName(dateStr) { return `breaks_${dateStr}`; }
 function getCurrentTimeString() {
     const d = getCambodiaDate();
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
-
-function safeKey(str) {
-    return str ? String(str).trim().toUpperCase() : '';
-}
-
+function safeKey(str) { return str ? String(str).trim().toUpperCase() : ''; }
 function getDirectImageLink(url) {
     if (!url) return '';
     const str = String(url).trim();
@@ -102,89 +92,70 @@ function getDirectImageLink(url) {
     }
     return str;
 }
-
-// ==========================
-// STAFF CACHE
-// ==========================
 async function refreshStaffCache() {
     console.log("🔄 Refreshing Staff Cache...");
     try {
         const client = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: client });
-
-        const mainRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AK`
-        });
-        const imgRes = await sheets.spreadsheets.values.get({
-            spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA'
-        });
-
+        const mainRes = await sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!A13:AK` });
+        const imgRes = await sheets.spreadsheets.values.get({ spreadsheetId: READ_SPREADSHEET_ID, range: `'${READ_SHEET_NAME}'!AJ13:AJ`, valueRenderOption: 'FORMULA' });
         const rows = mainRes.data.values || [];
         const imgRows = imgRes.data.values || [];
-
         const staffList = rows.map((r, i) => {
             if ((r[24] ? String(r[24]).trim() : '') !== 'Scan') return null;
-            
             let finalID = r[36] ? String(r[36]).trim() : (r[1] ? String(r[1]).trim() : null);
             const nameEN = r[4];
             if (!finalID && !nameEN) return null;
-
             let rawImg = imgRows[i] ? imgRows[i][0] : (r[35] || '');
-
-            return {
-                id: finalID,
-                name_en: nameEN,
-                name_kh: r[3] || nameEN,
-                group: r[26] ? String(r[26]).trim() : 'Staff',
-                image: getDirectImageLink(rawImg)
-            };
+            return { id: finalID, name_en: nameEN, name_kh: r[3] || nameEN, group: r[26] ? String(r[26]).trim() : 'Staff', image: getDirectImageLink(rawImg) };
         }).filter(item => item !== null && item.id !== null);
-
-        const idMap = {};
-        const nameMap = {};
+        const idMap = {}; const nameMap = {};
         staffList.forEach(s => {
             if (s.id) idMap[s.id] = s.image;
             if (s.name_en) nameMap[safeKey(s.name_en)] = s.image;
             if (s.name_kh) nameMap[safeKey(s.name_kh)] = s.image;
         });
-
         MEMORY.staffCache = { data: staffList, idMap, nameMap };
         console.log(`✅ Staff Cache Updated: ${staffList.length} staff loaded.`);
-    } catch (e) {
-        console.error("❌ Staff fetch error:", e.message);
-    }
+    } catch (e) { console.error("❌ Staff fetch error:", e.message); }
 }
 
 // ==========================
-// CARD LOGIC (UPDATED WITH LOCK)
+// 🆕 ZONE SETTINGS LOGIC (THE FIX)
 // ==========================
+async function loadZoneSettings() {
+    console.log("🔄 Loading Zone Settings...");
+    try {
+        const docRef = db.collection('settings').doc('zones'); // Use 'zones' document
+        const doc = await docRef.get();
+        
+        if (doc.exists) {
+            MEMORY.zoneSettings = doc.data();
+            console.log("✅ Zone Settings Loaded from DB:", MEMORY.zoneSettings);
+        } else {
+            console.log("⚠️ 'zones' document missing. Creating default...");
+            const defaultSettings = { zoneA: true, zoneB: true };
+            await docRef.set(defaultSettings);
+            MEMORY.zoneSettings = defaultSettings;
+            console.log("✅ Default Zone Settings Created.");
+        }
+    } catch (e) {
+        console.error("❌ Error loading zone settings:", e);
+    }
+}
+
 async function getNextAvailableCard(zone) {
     const todayCollection = getTodayCollectionName(); 
-    
-    // 1. Get cards ALREADY used in DB
-    const snapshot = await db.collection(todayCollection)
-        .where('status', '==', 'ON_BREAK')
-        .where('area', '==', zone)
-        .get();
-
+    const snapshot = await db.collection(todayCollection).where('status', '==', 'ON_BREAK').where('area', '==', zone).get();
     const usedCards = new Set();
-    snapshot.forEach(doc => {
-        if (doc.data().card) usedCards.add(doc.data().card);
-    });
-
-    // 2. Get list of valid cards for this zone
+    snapshot.forEach(doc => { if (doc.data().card) usedCards.add(doc.data().card); });
     let availableInZone = MEMORY.cardSettings.filter(c => c.zone === zone);
-    
-    // Fallback if settings empty
     if(availableInZone.length === 0) {
         const start = zone === 'B' ? 1 : 51;
         const end = zone === 'B' ? 50 : 150;
         for(let i=start; i<=end; i++) availableInZone.push({ cardId: `DD_${String(i).padStart(2,'0')}` });
     }
-
-    // 3. Find first card that is NOT used in DB AND NOT currently processing
     for (const card of availableInZone) {
-        // 🚀 CRITICAL FIX: Check processingCards Set
         if (!usedCards.has(card.cardId) && !processingCards.has(card.cardId)) {
             return card.cardId;
         }
@@ -210,23 +181,16 @@ async function loadCardSettings() {
 // ROUTES
 // ==========================
 
-app.get('/', (req, res) => res.send('Staff Hub API - Double Lock Secured 🔒'));
+app.get('/', (req, res) => res.send('Staff Hub API - Locked & Loaded 🔒'));
 
 app.get('/available-sheets', async (req, res) => {
     try {
         const collections = await db.listCollections();
-        const dates = collections
-            .map(c => c.id)
-            .filter(id => id.startsWith('breaks_'))
-            .map(id => id.replace('breaks_', ''));
-
+        const dates = collections.map(c => c.id).filter(id => id.startsWith('breaks_')).map(id => id.replace('breaks_', ''));
         const today = getTodayDateString();
         if (!dates.includes(today)) dates.push(today);
-
         res.json(dates);
-    } catch (error) {
-        res.json([getTodayDateString()]);
-    }
+    } catch (error) { res.json([getTodayDateString()]); }
 });
 
 app.post('/login', (req, res) => {
@@ -240,84 +204,85 @@ app.get('/staff', (req, res) => res.json(MEMORY.staffCache.data));
 app.get('/active-breaks', async (req, res) => {
     try {
         const todayCollection = getTodayCollectionName();
-        const snapshot = await db.collection(todayCollection)
-            .where('status', '==', 'ON_BREAK')
-            .get();
-
+        const snapshot = await db.collection(todayCollection).where('status', '==', 'ON_BREAK').get();
         const activeList = [];
         snapshot.forEach(doc => {
             const data = doc.data();
             let imgUrl = '';
             if (data.id && MEMORY.staffCache.idMap[data.id]) imgUrl = MEMORY.staffCache.idMap[data.id];
             else if (data.name && MEMORY.staffCache.nameMap[safeKey(data.name)]) imgUrl = MEMORY.staffCache.nameMap[safeKey(data.name)];
-            
             activeList.push({ ...data, image: imgUrl, docId: doc.id });
         });
         res.json(activeList);
-    } catch (error) {
-        res.json([]);
+    } catch (error) { res.json([]); }
+});
+
+// === 🆕 SETTINGS ROUTES ===
+
+// Get current zone status
+app.get('/settings', (req, res) => {
+    res.json(MEMORY.zoneSettings);
+});
+
+// Update zone status
+app.post('/settings/update', async (req, res) => {
+    console.log("📥 Received Settings Update:", req.body);
+    const { zoneA, zoneB } = req.body;
+    
+    // Update Memory
+    MEMORY.zoneSettings = { zoneA, zoneB };
+    
+    // Update Firestore
+    try {
+        await db.collection('settings').doc('zones').set(MEMORY.zoneSettings);
+        console.log("💾 Saved settings to DB:", MEMORY.zoneSettings);
+        
+        // Notify all clients
+        io.emit('database_updated', { type: 'settings_updated', settings: MEMORY.zoneSettings });
+        
+        res.json({ status: 'success', settings: MEMORY.zoneSettings });
+    } catch (e) {
+        console.error("❌ Failed to save settings:", e);
+        res.status(500).json({ error: e.message });
     }
 });
 
-// === 🚀 START BREAK (FIXED USER & CARD RACE CONDITIONS) ===
+// === 🚀 START BREAK (WITH LOCK CHECK) ===
 app.post('/break', async (req, res) => {
     const { id, name, group, area } = req.body;
     if (!id || !name || !area) return res.status(400).json({ error: 'Missing data' });
     const targetId = String(id).trim();
 
-    // 🔒 1. USER LOCK: Check if this user is currently processing
-    if (processingUsers.has(targetId)) {
-        return res.json({ status: 'success', message: 'Request already in progress', card: 'PROCESSING' });
+    // 🔒 0. ZONE LOCK CHECK
+    if (area === 'A' && !MEMORY.zoneSettings.zoneA) {
+        return res.json({ status: 'error', message: 'Zone A is currently closed.', card: 'CLOSED' });
     }
+    if (area === 'B' && !MEMORY.zoneSettings.zoneB) {
+        return res.json({ status: 'error', message: 'Zone B is currently closed.', card: 'CLOSED' });
+    }
+
+    if (processingUsers.has(targetId)) return res.json({ status: 'success', message: 'Request already in progress', card: 'PROCESSING' });
     processingUsers.add(targetId);
 
-    // Variable to hold the chosen card so we can unlock it later
     let assignedCard = null;
-
     try {
         const todayCollection = getTodayCollectionName();
+        const existing = await db.collection(todayCollection).where('id', '==', targetId).where('status', '==', 'ON_BREAK').get();
 
-        // 2. DB CHECK: Check if already on break
-        const existing = await db.collection(todayCollection)
-            .where('id', '==', targetId)
-            .where('status', '==', 'ON_BREAK')
-            .get();
+        if (!existing.empty) return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
 
-        if (!existing.empty) {
-            return res.json({ status: 'success', message: 'User already on break', card: 'ALREADY_OUT' });
-        }
-
-        // 3. CARD ASSIGNMENT + LOCK
         assignedCard = await getNextAvailableCard(area);
-        
-        if (!assignedCard) {
-            return res.status(400).json({ error: 'No available card in this zone' });
-        }
+        if (!assignedCard) return res.status(400).json({ error: 'No available card in this zone' });
 
-        // 🚀 IMMEDIATELY LOCK THE CARD IN MEMORY
-        // If Device B comes 1ms later, it will see this card is in `processingCards` and skip it.
         processingCards.add(assignedCard);
-
         const timeStr = getCurrentTimeString();
         const dateStr = getTodayDateString();
 
         const newDoc = {
-            id: targetId,
-            name,
-            group: group || '',
-            timeOut: timeStr,
-            timeOutDate: Timestamp.now(),
-            area,
-            dateString: dateStr,
-            card: assignedCard,
-            status: 'ON_BREAK',
-            overtime: '0',
-            timeIn: ''
+            id: targetId, name, group: group || '', timeOut: timeStr, timeOutDate: Timestamp.now(), area, dateString: dateStr, card: assignedCard, status: 'ON_BREAK', overtime: '0', timeIn: ''
         };
 
-        // 4. WRITE TO DB
         await db.collection(todayCollection).add(newDoc);
-
         res.json({ status: 'success', timeOut: timeStr, card: assignedCard });
         io.emit('database_updated', { type: 'break', id: targetId });
 
@@ -325,15 +290,14 @@ app.post('/break', async (req, res) => {
         console.error("Break Error:", e);
         res.status(500).json({ error: e.message });
     } finally {
-        // 🔓 UNLOCK EVERYTHING
         processingUsers.delete(targetId);
-        if (assignedCard) {
-            processingCards.delete(assignedCard);
-        }
+        if (assignedCard) processingCards.delete(assignedCard);
     }
 });
 
-// === TIME IN ===
+// ... [KEEP TIMEIN, STATS, CARD SETTINGS, REPORT, ETC.] ...
+// (No changes needed for timein, stats, etc.)
+
 app.post('/timein', async (req, res) => {
     const { id } = req.body;
     if (!id) return res.status(400).json({ error: 'ID required' });
@@ -344,11 +308,7 @@ app.post('/timein', async (req, res) => {
 
     try {
         const todayCollection = getTodayCollectionName();
-        const snapshot = await db.collection(todayCollection)
-            .where('id', '==', targetId)
-            .where('status', '==', 'ON_BREAK')
-            .limit(1)
-            .get();
+        const snapshot = await db.collection(todayCollection).where('id', '==', targetId).where('status', '==', 'ON_BREAK').limit(1).get();
 
         if (snapshot.empty) return res.json({ status: 'success', message: 'Already timed in' });
 
@@ -379,7 +339,6 @@ app.post('/timein', async (req, res) => {
     }
 });
 
-// === STATS ===
 app.get('/stats/today', async (req, res) => {
     try {
         const todayCollection = getTodayCollectionName();
@@ -397,7 +356,6 @@ app.get('/stats/today', async (req, res) => {
     } catch (error) { res.json({ staff_today: 0, total_records: 0, total_ot: 0 }); }
 });
 
-// === CARDS SETTINGS ===
 app.get('/cards', (req, res) => res.json(MEMORY.cardSettings));
 
 app.post('/cards/update', async (req, res) => {
@@ -419,7 +377,6 @@ app.post('/cards/delete', async (req, res) => {
     res.json({ status: 'success' });
 });
 
-// === REPORT ===
 app.get('/report', async (req, res) => {
     const { filter } = req.query; 
     if(!filter) return res.json({ raw: [] });
@@ -466,6 +423,7 @@ app.post('/delete-sheets', async (req, res) => {
 server.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 Firebase Server (Secure) running on port ${PORT}`);
     await loadCardSettings();
+    await loadZoneSettings(); // <--- THIS WILL CREATE THE DOC FOR YOU!
     await refreshStaffCache();
     setInterval(refreshStaffCache, 10 * 60 * 1000);
 });
